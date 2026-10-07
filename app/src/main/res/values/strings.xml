@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">EveryVideo</string>
+    <string name="servers">FTP / SMB 서버</string>
+    <string name="concat">동영상 이어붙이기</string>
+    <string name="bookmarks_all">즐겨찾기 모음</string>
+    <string name="open_file">파일 열기</string>
+    <string name="open_url">주소로 열기</string>
+    <string name="google_drive">구글 드라이브</string>
+    <string name="screen_record">화면 녹화</string>
+    <string name="recent">최근 재생</string>
+    <string name="no_recent">최근 재생한 동영상이 없습니다</string>
+    <string name="record_channel">화면 녹화</string>
+    <string name="recording">화면 녹화 중</string>
+    <string name="stop">중지</string>
+</resources>

@@ -1,0 +1,293 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black"
+    android:keepScreenOn="true">
+
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/playerView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:show_buffering="when_playing"
+        app:surface_type="texture_view"
+        app:use_controller="false" />
+
+    <View
+        android:id="@+id/gestureLayer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <TextView
+        android:id="@+id/indicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@color/overlay"
+        android:padding="16dp"
+        android:textColor="@android:color/white"
+        android:textSize="20sp"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/controls"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:id="@+id/topBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@color/overlay"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp">
+
+            <ImageButton
+                android:id="@+id/btnBack"
+                style="@style/PlayerIcon"
+                android:contentDescription="뒤로"
+                android:src="@drawable/ic_back" />
+
+            <TextView
+                android:id="@+id/title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:paddingStart="4dp"
+                android:textColor="@android:color/white"
+                android:textSize="16sp" />
+
+            <TextView
+                android:id="@+id/btnSpeed"
+                style="@style/PlayerText"
+                android:text="1.0x" />
+
+            <TextView
+                android:id="@+id/btnAb"
+                style="@style/PlayerText"
+                android:text="A-B" />
+
+            <ImageButton
+                android:id="@+id/btnRepeat"
+                style="@style/PlayerIcon"
+                android:alpha="0.5"
+                android:contentDescription="반복"
+                android:src="@drawable/ic_repeat" />
+
+            <ImageButton
+                android:id="@+id/btnTracks"
+                style="@style/PlayerIcon"
+                android:contentDescription="자막/음성"
+                android:src="@drawable/ic_tracks" />
+
+            <ImageButton
+                android:id="@+id/btnAspect"
+                style="@style/PlayerIcon"
+                android:contentDescription="화면 비율"
+                android:src="@drawable/ic_aspect" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <ImageButton
+                android:id="@+id/btnPrev"
+                style="@style/PlayerIcon"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:contentDescription="이전"
+                android:src="@drawable/ic_prev" />
+
+            <ImageButton
+                android:id="@+id/btnRew"
+                style="@style/PlayerIcon"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_marginStart="16dp"
+                android:contentDescription="10초 뒤로"
+                android:src="@drawable/ic_replay10" />
+
+            <ImageButton
+                android:id="@+id/btnPlay"
+                style="@style/PlayerIcon"
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:layout_marginStart="24dp"
+                android:layout_marginEnd="24dp"
+                android:contentDescription="재생"
+                android:src="@drawable/ic_pause" />
+
+            <ImageButton
+                android:id="@+id/btnFwd"
+                style="@style/PlayerIcon"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_marginEnd="16dp"
+                android:contentDescription="10초 앞으로"
+                android:src="@drawable/ic_forward10" />
+
+            <ImageButton
+                android:id="@+id/btnNext"
+                style="@style/PlayerIcon"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:contentDescription="다음"
+                android:src="@drawable/ic_next" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/bottomBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@color/overlay"
+            android:orientation="vertical"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/position"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="56dp"
+                    android:text="00:00"
+                    android:textColor="@android:color/white" />
+
+                <androidx.media3.ui.DefaultTimeBar
+                    android:id="@+id/timeBar"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    app:ad_marker_color="@color/accent"
+                    app:ad_marker_width="4dp"
+                    app:played_ad_marker_color="@color/accent"
+                    app:played_color="@color/brand"
+                    app:scrubber_color="@color/brand" />
+
+                <TextView
+                    android:id="@+id/duration"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="end"
+                    android:minWidth="56dp"
+                    android:text="00:00"
+                    android:textColor="@android:color/white" />
+            </LinearLayout>
+
+            <HorizontalScrollView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <ImageButton
+                        android:id="@+id/btnLock"
+                        style="@style/PlayerIcon"
+                        android:contentDescription="화면 잠금"
+                        android:src="@drawable/ic_lock" />
+
+                    <ImageButton
+                        android:id="@+id/btnCapture"
+                        style="@style/PlayerIcon"
+                        android:contentDescription="캡쳐"
+                        android:src="@drawable/ic_camera" />
+
+                    <ImageButton
+                        android:id="@+id/btnClip"
+                        style="@style/PlayerIcon"
+                        android:contentDescription="구간 저장"
+                        android:src="@drawable/ic_cut" />
+
+                    <ImageButton
+                        android:id="@+id/btnBookmarkAdd"
+                        style="@style/PlayerIcon"
+                        android:contentDescription="즐겨찾기 추가"
+                        android:src="@drawable/ic_bookmark_add" />
+
+                    <ImageButton
+                        android:id="@+id/btnBookmarks"
+                        style="@style/PlayerIcon"
+                        android:contentDescription="즐겨찾기 목록"
+                        android:src="@drawable/ic_bookmarks" />
+
+                    <ImageButton
+                        android:id="@+id/btnRotate"
+                        style="@style/PlayerIcon"
+                        android:contentDescription="화면 회전"
+                        android:src="@drawable/ic_rotate" />
+
+                    <ImageButton
+                        android:id="@+id/btnPip"
+                        style="@style/PlayerIcon"
+                        android:contentDescription="작은 창"
+                        android:src="@drawable/ic_pip" />
+
+                    <ImageButton
+                        android:id="@+id/btnFullscreen"
+                        style="@style/PlayerIcon"
+                        android:contentDescription="전체화면"
+                        android:src="@drawable/ic_fullscreen" />
+                </LinearLayout>
+            </HorizontalScrollView>
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/preview"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start"
+        android:layout_marginBottom="104dp"
+        android:background="@android:color/black"
+        android:elevation="8dp"
+        android:orientation="vertical"
+        android:padding="2dp"
+        android:visibility="invisible">
+
+        <TextureView
+            android:id="@+id/previewTexture"
+            android:layout_width="192dp"
+            android:layout_height="108dp" />
+
+        <TextView
+            android:id="@+id/previewTime"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:padding="2dp"
+            android:textColor="@android:color/white"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/btnUnlock"
+        style="@style/PlayerIcon"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_gravity="center_vertical|start"
+        android:layout_marginStart="16dp"
+        android:background="@color/overlay"
+        android:contentDescription="잠금 해제"
+        android:src="@drawable/ic_lock"
+        android:visibility="gone" />
+</FrameLayout>
