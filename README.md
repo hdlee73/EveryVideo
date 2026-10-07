@@ -23,7 +23,7 @@
 ## 빌드 / 릴리스
 
 - `main` 에 push 하면 GitHub Actions 가 APK 를 빌드해 Artifacts 로 올립니다.
-- `v*` 태그를 push 하면 (예: `git tag v0.2.0 && git push origin v0.2.0`) 빌드 후 GitHub Release 를 만들고 APK 를 첨부합니다.
+- `VERSION` 파일의 버전을 올려 `main` 에 push 하면, 그 버전이 아직 릴리스되지 않았을 때 자동으로 `v버전` 태그와 GitHub Release 를 만들고 APK 를 첨부합니다. `v*` 태그를 직접 push 해도 릴리스됩니다.
 - 서명 키는 저장소 Secrets(`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`)로 넣습니다. 없으면 빌드마다 새 디버그 키로 서명되어, 새 버전을 설치할 때 기존 앱을 지우고 다시 설치해야 합니다. 서명 키를 등록하면 그 뒤로는 덮어쓰기 업데이트가 됩니다.
 
 로컬 빌드: `./gradlew assembleRelease` (JDK 17, Android SDK 35 필요)
