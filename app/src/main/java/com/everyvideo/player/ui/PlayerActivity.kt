@@ -312,6 +312,7 @@ class PlayerActivity : AppCompatActivity() {
 
         setupGestures()
         setupAdjustPanel()
+        prefs.brightnessLevel?.let { applyBrightness(it) }
         setupQueuePanel()
 
         root.setOnGenericMotionListener { _, e -> handleGenericMotion(e) }
@@ -739,22 +740,49 @@ class PlayerActivity : AppCompatActivity() {
         zoomChip.visibility = View.GONE
     }
 
-    private fun currentBrightness(): Float {
-        val v = window.attributes.screenBrightness
-        if (v >= 0) return v
-        return runCatching { Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS) / 255f }.getOrDefault(0.5f)
+    /**
+     * 밝기 단계: -50 ~ 100. 0~100 은 화면 밝기(눈에 보이는 변화가 고르게 감마 곡선 적용),
+     * 0 미만은 화면을 최저로 둔 채 검은 막을 덧씌워 더 어둡게 한다.
+     */
+    private var brightnessLevel: Int? = null
+
+    private fun systemBrightnessLevel(): Int {
+        val raw = runCatching { Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS) }.getOrDefault(128)
+        return (Math.pow(raw / 255.0, 1 / 2.2) * 100).toInt().coerceIn(0, 100)
     }
 
-    private fun setBrightness(value: Float) {
+    private fun currentBrightnessLevel(): Int = brightnessLevel ?: systemBrightnessLevel()
+
+    private fun applyBrightness(level: Int?) {
+        brightnessLevel = level
         val lp = window.attributes
-        lp.screenBrightness = value.coerceIn(0.01f, 1f)
+        val dim = findViewById<View>(R.id.dimOverlay)
+        if (level == null) {
+            lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            dim.alpha = 0f
+        } else {
+            val l = level.coerceIn(-50, 100)
+            lp.screenBrightness = if (l <= 0) 0.004f else Math.pow(l / 100.0, 2.2).toFloat().coerceAtLeast(0.004f)
+            dim.alpha = if (l < 0) -l / 50f * 0.75f else 0f
+        }
         window.attributes = lp
+        prefs.brightnessLevel = level
     }
+
+    private fun brightnessLabel(level: Int) = if (level < 0) "밝기 0% · 더 어둡게 ${-level * 2}%" else "밝기 $level%"
+
+    private var brightnessAccumulator = 0f
 
     private fun changeBrightness(delta: Float) {
-        setBrightness(currentBrightness() + delta * 1.5f)
-        val pct = (currentBrightness() * 100).toInt()
-        showIndicator("밝기 $pct%", R.drawable.ic_brightness, pct)
+        // 화면 높이만큼 밀면 150단계 변화
+        brightnessAccumulator += delta * 150f
+        val steps = brightnessAccumulator.toInt()
+        if (steps != 0) {
+            brightnessAccumulator -= steps
+            applyBrightness((currentBrightnessLevel() + steps).coerceIn(-50, 100))
+        }
+        val level = currentBrightnessLevel()
+        showIndicator(brightnessLabel(level), R.drawable.ic_brightness, ((level + 50) * 100 / 150))
         syncAdjustPanel()
     }
 
@@ -817,8 +845,9 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun setupAdjustPanel() {
         brightnessSlider.addOnChangeListener { _, value, fromUser ->
-            if (fromUser) setBrightness(value / 100f)
-            findViewById<TextView>(R.id.brightnessValue).text = "${value.toInt()}%"
+            if (fromUser) applyBrightness(value.toInt())
+            val v = value.toInt()
+            findViewById<TextView>(R.id.brightnessValue).text = if (v < 0) "어둡게" else "$v%"
         }
         volumeSlider.addOnChangeListener { _, value, fromUser ->
             if (fromUser) {
@@ -828,16 +857,14 @@ class PlayerActivity : AppCompatActivity() {
             findViewById<TextView>(R.id.volumeValue).text = "${value.toInt()}%"
         }
         findViewById<View>(R.id.brightnessAuto).setOnClickListener {
-            val lp = window.attributes
-            lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
-            window.attributes = lp
+            applyBrightness(null)
             syncAdjustPanel()
             showIndicator("밝기: 시스템 설정", R.drawable.ic_brightness)
         }
     }
 
     private fun syncAdjustPanel() {
-        brightnessSlider.value = (currentBrightness() * 100).coerceIn(1f, 100f).toInt().toFloat()
+        brightnessSlider.value = currentBrightnessLevel().coerceIn(-50, 100).toFloat()
         volumeSlider.value = volumePercent().coerceIn(0, 100).toFloat()
     }
 

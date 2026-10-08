@@ -17,6 +17,11 @@ class Prefs(context: Context) {
         get() = sp.getString("videoFolder", null)?.let(Uri::parse)
         set(v) = sp.edit().putString("videoFolder", v?.toString()).apply()
 
+    /** 재생 화면 밝기 (-50~100, 0 미만은 화면 위에 어둡게 덧씌움). null 이면 시스템 밝기. */
+    var brightnessLevel: Int?
+        get() = if (sp.contains("brightnessLevel")) sp.getInt("brightnessLevel", 50) else null
+        set(v) = sp.edit().apply { if (v == null) remove("brightnessLevel") else putInt("brightnessLevel", v) }.apply()
+
     /** 캡쳐할 때 파일 이름과 위치를 매번 물을지. */
     var askOnCapture: Boolean
         get() = sp.getBoolean("askOnCapture", true)
