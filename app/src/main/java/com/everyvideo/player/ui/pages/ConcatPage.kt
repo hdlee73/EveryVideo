@@ -88,10 +88,15 @@ class ConcatPage : ListPage() {
         ex.exportConcat(items.map { it.first }, height, name, prefs.videoFolder, object : VideoExporter.Callback {
             override fun onProgress(percent: Int) = p.set(percent)
 
+            override fun onStatus(message: String) {
+                p.dialog.message(message)
+                p.set(0)
+            }
+
             override fun onDone(saved: Uri) {
                 p.dialog.dismiss()
                 val ctx = context ?: return
-                AppDialog(ctx).icon(R.drawable.ic_check).title("저장했습니다").message("$folderLabel 에 저장했습니다.")
+                AppDialog(ctx).icon(R.drawable.ic_check).title("저장했습니다").message("$folderLabel 에 저장했습니다." + (ex.resultNote?.let { "\n\n$it" } ?: ""))
                     .secondary("닫기").primary("재생") { main.play(listOf(saved)) }.show()
             }
 

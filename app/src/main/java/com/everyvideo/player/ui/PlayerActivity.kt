@@ -1277,10 +1277,15 @@ class PlayerActivity : AppCompatActivity() {
             exporter.exportClip(uri, s, e.coerceAtMost(duration), removeAudio, name, folder, object : VideoExporter.Callback {
                 override fun onProgress(percent: Int) = p.set(percent)
 
+                override fun onStatus(message: String) {
+                    p.dialog.message(message)
+                    p.set(0)
+                }
+
                 override fun onDone(saved: Uri) {
                     p.dialog.dismiss()
                     AppDialog(this@PlayerActivity).icon(R.drawable.ic_check).title("저장했습니다")
-                        .message("$label 에 저장했습니다.")
+                        .message("$label 에 저장했습니다." + (exporter.resultNote?.let { "\n\n$it" } ?: ""))
                         .secondary("닫기")
                         .primary("재생목록에 추가") {
                             player.addMediaItem(mediaItemOf(saved))
