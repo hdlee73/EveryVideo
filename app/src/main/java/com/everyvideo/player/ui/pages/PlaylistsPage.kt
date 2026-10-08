@@ -8,6 +8,7 @@ import com.everyvideo.player.R
 import com.everyvideo.player.data.Playlist
 import com.everyvideo.player.data.PlaylistItem
 import com.everyvideo.player.ui.AppDialog
+import com.everyvideo.player.ui.Sorting
 import com.everyvideo.player.ui.Util
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -104,9 +105,10 @@ class PlaylistsPage : ListPage(), BackHandler {
     private fun openPlaylist(id: Long, name: String) {
         openId = id
         upButton.visibility = View.VISIBLE
-        setTitle(name)
         clearActions()
+        setTitle(name, "X는 목록에서만 빼기 (파일은 그대로) · 손잡이를 끌어 순서 변경")
         addAction(R.drawable.ic_add, "추가") { addVideos(id) }
+        addAction(R.drawable.ic_sort, "정렬") { sortItems() }
         addAction(R.drawable.ic_play, "전체 재생", primary = true) { playFrom(id, 0) }
         setEmpty(R.drawable.ic_movie, "비어 있는 재생목록", "'추가'를 눌러 동영상을 넣으세요.", "동영상 추가") { addVideos(id) }
         job?.cancel()
@@ -117,7 +119,8 @@ class PlaylistsPage : ListPage(), BackHandler {
                     Row(
                         title = item.title,
                         badge = (i + 1).toString(),
-                        onMore = { itemMenu(i) },
+                        draggable = true,
+                        onDelete = { removeItem(item) },
                         onClick = { playFrom(id, i) }
                     )
                 })
@@ -136,28 +139,25 @@ class PlaylistsPage : ListPage(), BackHandler {
         }
     }
 
-    private fun itemMenu(index: Int) {
-        val item = items.getOrNull(index) ?: return
-        AppDialog.choice(
-            requireContext(), item.title,
-            listOf(
-                AppDialog.Companion.Item("위로 이동", icon = R.drawable.ic_up),
-                AppDialog.Companion.Item("아래로 이동", icon = R.drawable.ic_down),
-                AppDialog.Companion.Item("재생목록에서 빼기", icon = R.drawable.ic_delete)
-            )
-        ) { which ->
+    private fun removeItem(item: PlaylistItem) {
+        lifecycleScope.launch { dao.deleteItem(item) }
+        Util.toast(requireContext(), "'${item.title}'을(를) 재생목록에서 뺐습니다")
+    }
+
+    override fun onRowMoved(from: Int, to: Int) {
+        if (openId < 0 || from !in items.indices || to !in items.indices) return
+        val list = items.toMutableList()
+        list.add(to, list.removeAt(from))
+        items = list
+        lifecycleScope.launch { dao.updateItems(list.mapIndexed { i, it -> it.copy(sort = i) }) }
+    }
+
+    private fun sortItems() {
+        if (items.size < 2) return
+        Sorting.choose(requireContext()) { order ->
             lifecycleScope.launch {
-                when (which) {
-                    0, 1 -> {
-                        val target = if (which == 0) index - 1 else index + 1
-                        if (target in items.indices) {
-                            val list = items.toMutableList()
-                            list.add(target, list.removeAt(index))
-                            dao.updateItems(list.mapIndexed { i, it -> it.copy(sort = i) })
-                        }
-                    }
-                    2 -> dao.deleteItem(item)
-                }
+                val sorted = Sorting.sort(requireContext(), items, order, { Uri.parse(it.uri) }, { it.title })
+                dao.updateItems(sorted.mapIndexed { i, it -> it.copy(sort = i) })
             }
         }
     }

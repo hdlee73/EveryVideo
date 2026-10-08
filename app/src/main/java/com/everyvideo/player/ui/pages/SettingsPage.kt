@@ -4,6 +4,8 @@ import com.everyvideo.player.BuildConfig
 import com.everyvideo.player.R
 import com.everyvideo.player.data.Prefs
 import com.everyvideo.player.media.MediaStoreSaver
+import androidx.lifecycle.lifecycleScope
+import com.everyvideo.player.ui.AboutDialog
 import com.everyvideo.player.ui.AppDialog
 
 class SettingsPage : ListPage() {
@@ -15,6 +17,8 @@ class SettingsPage : ListPage() {
     }
 
     private fun render() {
+        val sp = requireContext().getSharedPreferences("settings", android.content.Context.MODE_PRIVATE)
+        val notify = sp.getBoolean(AboutDialog.KEY_NOTIFY, true)
         setRows(listOf(
             Row(
                 "캡쳐 저장 위치", prefs.folderLabel(prefs.imageFolder, MediaStoreSaver.DEFAULT_IMAGE_LABEL),
@@ -26,7 +30,7 @@ class SettingsPage : ListPage() {
                 R.drawable.ic_movie, showMore = false
             ) { main.pickFolder { prefs.videoFolder = it; render() } },
             Row(
-                "캡쳐할 때 이름과 위치 묻기", if (prefs.askOnCapture) "켜짐 · 저장 전에 파일 이름을 정합니다" else "꺼짐 · 바로 저장합니다",
+                "저장할 때 이름과 위치 묻기 (캡쳐·구간·GIF·썸네일)", if (prefs.askOnCapture) "켜짐 · 저장 전에 파일 이름을 정합니다" else "꺼짐 · 바로 저장합니다",
                 R.drawable.ic_edit, showMore = false
             ) { prefs.askOnCapture = !prefs.askOnCapture; render() },
             Row("저장 위치를 기본값으로", "사진/EveryVideo, 동영상/EveryVideo", R.drawable.ic_folder, showMore = false) {
@@ -44,7 +48,14 @@ class SettingsPage : ListPage() {
                     R.drawable.ic_lock
                 )
             },
-            Row("앱 정보", "EveryVideo ${BuildConfig.VERSION_NAME}", R.drawable.ic_info, showMore = false)
+            Row(
+                "새 버전 알림", if (notify) "켜짐 · 앱을 열 때 새 버전이 있으면 알려줍니다" else "꺼짐",
+                R.drawable.ic_download, showMore = false
+            ) { sp.edit().putBoolean(AboutDialog.KEY_NOTIFY, !notify).apply(); render() },
+            Row(
+                "앱 정보", "EveryVideo ${BuildConfig.VERSION_NAME} · ${BuildConfig.BUILD_DATE} · ${AboutDialog.AUTHOR}",
+                R.drawable.ic_info, showMore = false
+            ) { AboutDialog.show(requireContext(), viewLifecycleOwner.lifecycleScope) }
         ))
     }
 }

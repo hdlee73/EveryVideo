@@ -65,6 +65,19 @@
     </LinearLayout>
 
     <ImageButton
+        android:id="@+id/delete"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="목록에서 빼기"
+        android:focusable="false"
+        android:padding="11dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_close"
+        android:visibility="gone"
+        app:tint="@color/text_secondary" />
+
+    <ImageButton
         android:id="@+id/more"
         android:layout_width="44dp"
         android:layout_height="44dp"
@@ -72,5 +85,16 @@
         android:contentDescription="더보기"
         android:focusable="false"
         android:src="@drawable/ic_more"
+        app:tint="@color/text_secondary" />
+
+    <ImageView
+        android:id="@+id/drag"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:contentDescription="끌어서 순서 바꾸기"
+        android:padding="10dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_drag"
+        android:visibility="gone"
         app:tint="@color/text_secondary" />
 </LinearLayout>

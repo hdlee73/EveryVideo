@@ -61,8 +61,15 @@ class VideoPicker(private val activity: ComponentActivity) {
                 }
             }
             Source.DRIVE -> {
-                Util.toast(activity, "왼쪽 메뉴에서 'Google Drive'를 고르세요")
-                openDoc.apply {
+                // Google Drive 앱의 자체 선택 화면 (빠름, 왼쪽 위 X 나 뒤로 가기로 그냥 닫을 수 있음).
+                // Drive 앱이 없으면 시스템 파일 선택기를 Drive 위치로 연다.
+                val drive = Intent(Intent.ACTION_GET_CONTENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "video/*"
+                    putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                    setPackage(DRIVE_PACKAGE)
+                }
+                if (drive.resolveActivity(activity.packageManager) != null) drive else openDoc.apply {
                     putExtra(DocumentsContract.EXTRA_INITIAL_URI, DocumentsContract.buildRootUri(DRIVE_AUTHORITY, "root"))
                 }
             }
@@ -98,6 +105,7 @@ class VideoPicker(private val activity: ComponentActivity) {
 
     companion object {
         const val MY_FILES_PACKAGE = "com.sec.android.app.myfiles"
+        const val DRIVE_PACKAGE = "com.google.android.apps.docs"
         const val DRIVE_AUTHORITY = "com.google.android.apps.docs.storage"
         val VIDEO_MIME_TYPES = arrayOf(
             "video/*", "application/x-matroska", "application/vnd.rn-realmedia", "application/vnd.rn-realmedia-vbr",

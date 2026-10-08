@@ -1,6 +1,12 @@
 package com.everyvideo.player.media
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -171,20 +177,116 @@ class VideoExporter(private val context: Context) {
         run(attempts, baseName, folder, cb)
     }
 
-    /** 여러 동영상을 순서대로 이어붙인다. 해상도가 다르면 targetHeight 로 맞춘다. */
-    fun exportConcat(uris: List<Uri>, targetHeight: Int, baseName: String, folder: Uri?, cb: Callback) {
-        fun composition(removeAudio: Boolean) = Composition.Builder(
-            EditedMediaItemSequence(uris.map { EditedMediaItem.Builder(MediaItem.fromUri(it)).setRemoveAudio(removeAudio).build() })
-        ).setEffects(Effects(emptyList(), listOf(Presentation.createForHeight(targetHeight)))).build()
-        run(
-            listOf(
-                Attempt(null, null) { encodeBuilder() to composition(false) },
-                Attempt("소리 형식을 처리하지 못해 소리 없이 이어붙이는 중…", "일부 동영상의 소리 형식을 지원하지 않아 소리 없이 저장했습니다.") {
-                    encodeBuilder() to composition(true)
-                }
-            ),
-            baseName, folder, cb
-        )
+    /**
+     * 한 동영상의 여러 구간을 순서대로 이어 하나의 동영상으로 저장한다 (구간 여러 개 저장, 구간 삭제 후 남은 부분 저장).
+     * 구간이 하나면 [exportClip] 과 같다.
+     */
+    fun exportRanges(uri: Uri, ranges: List<Pair<Long, Long>>, removeAudio: Boolean, baseName: String, folder: Uri?, cb: Callback) {
+        if (ranges.size == 1) {
+            exportClip(uri, ranges[0].first, ranges[0].second, removeAudio, baseName, folder, cb)
+            return
+        }
+        fun composition(noAudio: Boolean) = Composition.Builder(
+            EditedMediaItemSequence(ranges.map { (s, e) ->
+                EditedMediaItem.Builder(clipItem(uri, s, e, false)).setRemoveAudio(noAudio).build()
+            })
+        ).build()
+        val attempts = mutableListOf(Attempt(null, null) { encodeBuilder() to composition(removeAudio) })
+        if (!removeAudio) {
+            attempts += Attempt("소리 형식을 처리하지 못해 소리 없이 저장하는 중…", "이 동영상의 소리 형식은 저장 기능에서 지원하지 않아 소리 없이 저장했습니다.") {
+                encodeBuilder() to composition(true)
+            }
+        }
+        run(attempts, baseName, folder, cb)
+    }
+
+    /** 이어붙이기 맨 앞에 넣을 썸네일 이미지와 보여줄 시간. */
+    data class Cover(val image: Uri, val durationMs: Long)
+
+    /** 여러 동영상을 순서대로 이어붙인다. 해상도가 다르면 targetHeight 로 맞춘다. cover 가 있으면 맨 앞에 넣는다. */
+    fun exportConcat(uris: List<Uri>, targetHeight: Int, baseName: String, folder: Uri?, cover: Cover?, cb: Callback) {
+        cancelled = false
+        if (cover == null) {
+            startConcat(uris, targetHeight, baseName, folder, null, cb)
+            return
+        }
+        cb.onStatus("썸네일 이미지를 준비하는 중…")
+        Thread {
+            val file = runCatching { prepareCover(cover.image, uris.first(), targetHeight) }.getOrNull()
+            handler.post {
+                if (cancelled) return@post
+                startConcat(uris, targetHeight, baseName, folder, file?.let { it to cover.durationMs }, cb)
+            }
+        }.start()
+    }
+
+    private fun startConcat(uris: List<Uri>, targetHeight: Int, baseName: String, folder: Uri?, cover: Pair<File, Long>?, cb: Callback) {
+        fun composition(removeAudio: Boolean, withCover: Boolean): Composition {
+            val items = mutableListOf<EditedMediaItem>()
+            if (withCover && cover != null) {
+                val (file, ms) = cover
+                val item = MediaItem.Builder()
+                    .setUri(Uri.fromFile(file))
+                    .setMimeType(MimeTypes.IMAGE_JPEG)
+                    .setImageDurationMs(ms)
+                    .build()
+                items += EditedMediaItem.Builder(item).setDurationUs(ms * 1000).setFrameRate(30).setRemoveAudio(removeAudio).build()
+            }
+            uris.forEach { items += EditedMediaItem.Builder(MediaItem.fromUri(it)).setRemoveAudio(removeAudio).build() }
+            return Composition.Builder(EditedMediaItemSequence(items))
+                .setEffects(Effects(emptyList(), listOf(Presentation.createForHeight(targetHeight))))
+                .experimentalSetForceAudioTrack(withCover && cover != null && !removeAudio)
+                .build()
+        }
+        val noAudioNote = "일부 동영상의 소리 형식을 지원하지 않아 소리 없이 저장했습니다."
+        val attempts = mutableListOf<Attempt>()
+        if (cover != null) {
+            attempts += Attempt(null, null) { encodeBuilder() to composition(false, true) }
+            attempts += Attempt("소리 없이 다시 시도하는 중…", noAudioNote) { encodeBuilder() to composition(true, true) }
+        }
+        val coverNote = if (cover != null) "썸네일 이미지를 넣지 못해 빼고 저장했습니다." else null
+        attempts += Attempt(if (cover != null) "썸네일 없이 다시 시도하는 중…" else null, coverNote) { encodeBuilder() to composition(false, false) }
+        attempts += Attempt("소리 형식을 처리하지 못해 소리 없이 이어붙이는 중…", listOfNotNull(coverNote, noAudioNote).joinToString("\n")) {
+            encodeBuilder() to composition(true, false)
+        }
+        run(attempts, baseName, folder, object : Callback by cb {
+            override fun onDone(saved: Uri) { cover?.first?.delete(); cb.onDone(saved) }
+            override fun onError(message: String) { cover?.first?.delete(); cb.onError(message) }
+        })
+    }
+
+    /** 고른 이미지를 첫 동영상의 화면 비율에 맞춰(남는 곳은 검게) JPEG 로 만든다. */
+    private fun prepareCover(image: Uri, firstVideo: Uri, targetHeight: Int): File {
+        var aspect = 16f / 9f
+        runCatching {
+            val r = MediaMetadataRetriever()
+            try {
+                r.setDataSource(context, firstVideo)
+                val w = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toFloatOrNull() ?: 0f
+                val h = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toFloatOrNull() ?: 0f
+                val rot = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+                if (w > 0 && h > 0) aspect = if (rot == 90 || rot == 270) h / w else w / h
+            } finally {
+                r.release()
+            }
+        }
+        val outH = targetHeight - targetHeight % 2
+        var outW = (outH * aspect).toInt()
+        outW -= outW % 2
+        val src = Thumbnails.decode(context, image, maxOf(outW, outH)) ?: throw IllegalStateException("이미지를 읽지 못했습니다")
+        val out = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        canvas.drawColor(Color.BLACK)
+        val scale = minOf(outW / src.width.toFloat(), outH / src.height.toFloat())
+        val dw = src.width * scale
+        val dh = src.height * scale
+        val dst = RectF((outW - dw) / 2f, (outH - dh) / 2f, (outW + dw) / 2f, (outH + dh) / 2f)
+        canvas.drawBitmap(src, null, dst, Paint(Paint.FILTER_BITMAP_FLAG))
+        val file = File(context.cacheDir, "cover_${System.nanoTime()}.jpg")
+        file.outputStream().use { out.compress(Bitmap.CompressFormat.JPEG, 92, it) }
+        src.recycle()
+        out.recycle()
+        return file
     }
 
     fun cancel() {

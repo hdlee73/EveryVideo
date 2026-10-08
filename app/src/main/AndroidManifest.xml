@@ -16,6 +16,20 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
+    <!-- 삼성 내 파일 / Google Drive 선택 화면이 있는지 확인하고, 메일·브라우저를 열기 위해 -->
+    <queries>
+        <package android:name="com.sec.android.app.myfiles" />
+        <package android:name="com.google.android.apps.docs" />
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
     <application
         android:name=".App"
         android:allowBackup="true"

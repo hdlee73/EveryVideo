@@ -16,6 +16,9 @@ android {
         targetSdk = 34
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
         versionName = System.getenv("VERSION_NAME") ?: "0.1.0"
+        // 앱 정보에 보여줄 빌드(업데이트) 날짜
+        val buildDate = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).toString()
+        buildConfigField("String", "BUILD_DATE", "\"$buildDate\"")
     }
 
     signingConfigs {
@@ -72,6 +75,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.fragment:fragment-ktx:1.8.5")
     implementation("androidx.drawerlayout:drawerlayout:1.2.0")
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 

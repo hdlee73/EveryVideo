@@ -41,14 +41,24 @@
         android:textSize="14sp" />
 
     <ImageButton
-        android:id="@+id/more"
+        android:id="@+id/delete"
         android:layout_width="40dp"
         android:layout_height="40dp"
         android:background="?attr/selectableItemBackgroundBorderless"
-        android:contentDescription="더보기"
+        android:contentDescription="목록에서 빼기"
         android:focusable="false"
+        android:padding="11dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_close"
+        app:tint="#B3FFFFFF" />
+
+    <ImageView
+        android:id="@+id/drag"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:contentDescription="끌어서 순서 바꾸기"
         android:padding="10dp"
         android:scaleType="fitCenter"
-        android:src="@drawable/ic_more"
+        android:src="@drawable/ic_drag"
         app:tint="#B3FFFFFF" />
 </LinearLayout>

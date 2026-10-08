@@ -4,15 +4,17 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.BaseAdapter
+import android.graphics.Rect
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ListView
 import android.widget.TextView
 import androidx.annotation.DrawableRes
 import androidx.fragment.app.Fragment
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.everyvideo.player.R
+import com.everyvideo.player.ui.DragReorder
 import com.everyvideo.player.ui.MainActivity
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.progressindicator.LinearProgressIndicator
@@ -25,6 +27,10 @@ data class Row(
     val badge: String? = null,
     val showMore: Boolean = true,
     val onMore: (() -> Unit)? = null,
+    /** 오른쪽 X 버튼 (목록에서 빼기). */
+    val onDelete: (() -> Unit)? = null,
+    /** 오른쪽 손잡이로 끌어서 순서 바꾸기. */
+    val draggable: Boolean = false,
     val onClick: (() -> Unit)? = null
 )
 
@@ -39,7 +45,7 @@ interface BackHandler {
 
 /** 제목, 오른쪽 위 버튼들, 카드형 목록, 빈 화면 안내를 가진 공통 화면. */
 abstract class ListPage : Fragment(R.layout.fragment_list), Searchable {
-    protected lateinit var listView: ListView
+    protected lateinit var listView: RecyclerView
     private lateinit var titleView: TextView
     private lateinit var subtitleView: TextView
     private lateinit var actions: LinearLayout
@@ -60,13 +66,15 @@ abstract class ListPage : Fragment(R.layout.fragment_list), Searchable {
         emptyView = view.findViewById(R.id.emptyView)
         progress = view.findViewById(R.id.progress)
         upButton = view.findViewById(R.id.btnUp)
+        listView.layoutManager = LinearLayoutManager(requireContext())
         listView.adapter = adapter
-        listView.setOnItemClickListener { _, _, pos, _ -> adapter.getItem(pos).onClick?.invoke() }
-        listView.setOnItemLongClickListener { _, _, pos, _ ->
-            val r = adapter.getItem(pos)
-            r.onMore?.invoke()
-            r.onMore != null
-        }
+        val gap = (8 * resources.displayMetrics.density).toInt()
+        listView.addItemDecoration(object : RecyclerView.ItemDecoration() {
+            override fun getItemOffsets(outRect: Rect, view: View, parent: RecyclerView, state: RecyclerView.State) {
+                if (parent.getChildAdapterPosition(view) > 0) outRect.top = gap
+            }
+        })
+        reorder.attach(listView)
         setup()
     }
 
@@ -111,6 +119,14 @@ abstract class ListPage : Fragment(R.layout.fragment_list), Searchable {
         }
     }
 
+    /** 끌어서 순서를 바꾼 뒤 불린다 (전체 목록 기준 위치). */
+    protected open fun onRowMoved(from: Int, to: Int) = Unit
+
+    private val reorder = DragReorder(
+        onMove = { f, t -> adapter.rows.add(t, adapter.rows.removeAt(f)) },
+        onDrop = { f, t -> if (query.isEmpty()) onRowMoved(f, t) }
+    )
+
     protected fun setRows(rows: List<Row>) {
         allRows = rows
         applyFilter()
@@ -126,21 +142,29 @@ abstract class ListPage : Fragment(R.layout.fragment_list), Searchable {
         val rows = if (q.isEmpty()) allRows else allRows.filter {
             it.title.lowercase().contains(q) || it.subtitle.lowercase().contains(q)
         }
-        adapter.rows = rows
+        adapter.rows = rows.toMutableList()
+        reorder.enabled = q.isEmpty()
         adapter.notifyDataSetChanged()
         emptyView.visibility = if (rows.isEmpty()) View.VISIBLE else View.GONE
         listView.visibility = if (rows.isEmpty()) View.INVISIBLE else View.VISIBLE
     }
 
-    private inner class RowAdapter : BaseAdapter() {
-        var rows: List<Row> = emptyList()
-        override fun getCount() = rows.size
-        override fun getItem(position: Int) = rows[position]
-        override fun getItemId(position: Int) = position.toLong()
+    private class Holder(v: View) : RecyclerView.ViewHolder(v)
 
-        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-            val v = convertView ?: LayoutInflater.from(parent.context).inflate(R.layout.item_row, parent, false)
+    private inner class RowAdapter : RecyclerView.Adapter<Holder>() {
+        var rows: MutableList<Row> = mutableListOf()
+        override fun getItemCount() = rows.size
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
+            Holder(LayoutInflater.from(parent.context).inflate(R.layout.item_row, parent, false))
+
+        override fun onBindViewHolder(holder: Holder, position: Int) {
+            val v = holder.itemView
             val r = rows[position]
+            v.isClickable = true
+            v.setOnClickListener { rows.getOrNull(holder.bindingAdapterPosition)?.onClick?.invoke() }
+            if (r.onMore != null) v.setOnLongClickListener { rows.getOrNull(holder.bindingAdapterPosition)?.onMore?.invoke(); true }
+            else v.setOnLongClickListener(null)
             v.findViewById<TextView>(R.id.title).text = r.title
             v.findViewById<TextView>(R.id.subtitle).apply {
                 text = r.subtitle
@@ -159,9 +183,15 @@ abstract class ListPage : Fragment(R.layout.fragment_list), Searchable {
             }
             v.findViewById<ImageButton>(R.id.more).apply {
                 visibility = if (r.showMore && r.onMore != null) View.VISIBLE else View.GONE
-                setOnClickListener { r.onMore?.invoke() }
+                setOnClickListener { rows.getOrNull(holder.bindingAdapterPosition)?.onMore?.invoke() }
             }
-            return v
+            v.findViewById<ImageButton>(R.id.delete).apply {
+                visibility = if (r.onDelete != null) View.VISIBLE else View.GONE
+                setOnClickListener { rows.getOrNull(holder.bindingAdapterPosition)?.onDelete?.invoke() }
+            }
+            val drag = v.findViewById<ImageView>(R.id.drag)
+            drag.visibility = if (r.draggable && query.isEmpty()) View.VISIBLE else View.GONE
+            reorder.bindHandle(drag, holder)
         }
     }
 }

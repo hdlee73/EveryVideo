@@ -23,6 +23,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import com.everyvideo.player.R
 import com.everyvideo.player.net.DriveLinks
 import com.everyvideo.player.record.ScreenRecordActivity
@@ -76,6 +77,22 @@ class MainActivity : AppCompatActivity() {
 
     fun pickFolder(onPicked: (Uri) -> Unit) = folderPicker.pick(onPicked)
 
+    private var imageCallback: ((Uri) -> Unit)? = null
+    private val imagePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val cb = imageCallback
+        imageCallback = null
+        if (uri != null && cb != null) {
+            runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            cb(uri)
+        }
+    }
+
+    /** 이미지 한 장 고르기 (이어붙이기 썸네일). 취소하면 아무 일도 없다. */
+    fun pickImage(onPicked: (Uri) -> Unit) {
+        imageCallback = onPicked
+        runCatching { imagePicker.launch(arrayOf("image/*")) }
+    }
+
     // ---------------------------------------------------------------- 화면 구성
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -98,6 +115,7 @@ class MainActivity : AppCompatActivity() {
         current = savedInstanceState?.getString("page")?.let { runCatching { Page.valueOf(it) }.getOrNull() } ?: Page.HOME
         buildNav()
         if (savedInstanceState == null) show(current) else selectNav(current)
+        if (savedInstanceState == null) AboutDialog.checkOnLaunch(this, lifecycleScope)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
