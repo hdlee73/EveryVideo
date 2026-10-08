@@ -71,10 +71,6 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".ui.ServersActivity" android:label="@string/servers" />
-        <activity android:name=".ui.BrowseActivity" />
-        <activity android:name=".ui.ConcatActivity" android:label="@string/concat" />
-        <activity android:name=".ui.BookmarksActivity" android:label="@string/bookmarks_all" />
         <activity
             android:name=".record.ScreenRecordActivity"
             android:excludeFromRecents="true"

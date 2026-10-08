@@ -20,16 +20,50 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <TextView
+    <LinearLayout
         android:id="@+id/indicator"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
-        android:background="@color/overlay"
-        android:padding="16dp"
-        android:textColor="@android:color/white"
-        android:textSize="20sp"
-        android:visibility="gone" />
+        android:background="@drawable/bg_pill_dark"
+        android:gravity="center"
+        android:minWidth="180dp"
+        android:orientation="vertical"
+        android:paddingStart="24dp"
+        android:paddingTop="16dp"
+        android:paddingEnd="24dp"
+        android:paddingBottom="16dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/indicatorIcon"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:importantForAccessibility="no"
+            android:visibility="gone"
+            app:tint="@android:color/white" />
+
+        <TextView
+            android:id="@+id/indicatorText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textColor="@android:color/white"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+        <com.google.android.material.progressindicator.LinearProgressIndicator
+            android:id="@+id/indicatorBar"
+            android:layout_width="140dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:max="100"
+            android:visibility="gone"
+            app:indicatorColor="@android:color/white"
+            app:trackColor="#40FFFFFF"
+            app:trackCornerRadius="3dp"
+            app:trackThickness="6dp" />
+    </LinearLayout>
 
     <LinearLayout
         android:id="@+id/controls"
@@ -92,6 +126,12 @@
                 style="@style/PlayerIcon"
                 android:contentDescription="화면 비율"
                 android:src="@drawable/ic_aspect" />
+
+            <ImageButton
+                android:id="@+id/btnQueue"
+                style="@style/PlayerIcon"
+                android:contentDescription="재생목록"
+                android:src="@drawable/ic_queue" />
         </LinearLayout>
 
         <LinearLayout
@@ -207,6 +247,12 @@
                         android:src="@drawable/ic_lock" />
 
                     <ImageButton
+                        android:id="@+id/btnAdjust"
+                        style="@style/PlayerIcon"
+                        android:contentDescription="밝기와 볼륨"
+                        android:src="@drawable/ic_brightness" />
+
+                    <ImageButton
                         android:id="@+id/btnCapture"
                         style="@style/PlayerIcon"
                         android:contentDescription="캡쳐"
@@ -277,6 +323,188 @@
             android:padding="2dp"
             android:textColor="@android:color/white"
             android:textSize="12sp" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/zoomChip"
+        android:layout_width="wrap_content"
+        android:layout_height="36dp"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="72dp"
+        android:background="@drawable/bg_pill_dark"
+        android:drawablePadding="6dp"
+        android:gravity="center"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:textColor="@android:color/white"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/adjustPanel"
+        android:layout_width="360dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="120dp"
+        android:background="@drawable/bg_pill_dark"
+        android:orientation="vertical"
+        android:paddingStart="16dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="8dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_brightness"
+                app:tint="@android:color/white" />
+
+            <com.google.android.material.slider.Slider
+                android:id="@+id/brightnessSlider"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:contentDescription="밝기"
+                android:valueFrom="1"
+                android:valueTo="100"
+                android:value="50"
+                app:labelBehavior="gone" />
+
+            <TextView
+                android:id="@+id/brightnessValue"
+                android:layout_width="44dp"
+                android:layout_height="wrap_content"
+                android:gravity="end"
+                android:textColor="@android:color/white"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_volume"
+                app:tint="@android:color/white" />
+
+            <com.google.android.material.slider.Slider
+                android:id="@+id/volumeSlider"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:contentDescription="볼륨"
+                android:valueFrom="0"
+                android:valueTo="100"
+                android:value="50"
+                app:labelBehavior="gone" />
+
+            <TextView
+                android:id="@+id/volumeValue"
+                android:layout_width="44dp"
+                android:layout_height="wrap_content"
+                android:gravity="end"
+                android:textColor="@android:color/white"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/brightnessAuto"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_gravity="end"
+            android:background="?attr/selectableItemBackground"
+            android:gravity="center"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:text="밝기 시스템 설정 따르기"
+            android:textColor="#FFBFC3FF"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/queuePanel"
+        android:layout_width="340dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:background="@drawable/bg_panel_dark"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="20dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="8dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="재생목록"
+                    android:textColor="@android:color/white"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/queueInfo"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="#B3FFFFFF"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/queueAdd"
+                style="@style/PlayerIcon"
+                android:contentDescription="동영상 추가"
+                android:src="@drawable/ic_add" />
+
+            <ImageButton
+                android:id="@+id/queueSave"
+                style="@style/PlayerIcon"
+                android:contentDescription="재생목록 저장"
+                android:src="@drawable/ic_save" />
+
+            <ImageButton
+                android:id="@+id/queueClose"
+                style="@style/PlayerIcon"
+                android:contentDescription="닫기"
+                android:src="@drawable/ic_close" />
+        </LinearLayout>
+
+        <ListView
+            android:id="@+id/queueList"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:clipToPadding="false"
+            android:divider="@null"
+            android:dividerHeight="2dp"
+            android:paddingStart="8dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="16dp" />
     </LinearLayout>
 
     <ImageButton

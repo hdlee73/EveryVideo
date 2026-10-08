@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="44dp"
+    android:layout_marginTop="2dp"
+    android:background="@drawable/bg_nav_item"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingEnd="10dp">
+
+    <View
+        android:id="@+id/indicator"
+        android:layout_width="3dp"
+        android:layout_height="18dp"
+        android:background="@drawable/bg_nav_indicator"
+        android:visibility="invisible" />
+
+    <ImageView
+        android:id="@+id/icon"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_marginStart="9dp"
+        android:importantForAccessibility="no"
+        app:tint="@color/text_primary" />
+
+    <TextView
+        android:id="@+id/label"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="14dp"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@color/text_primary"
+        android:textSize="15sp" />
+
+    <ImageView
+        android:id="@+id/trailing"
+        android:layout_width="18dp"
+        android:layout_height="18dp"
+        android:importantForAccessibility="no"
+        android:visibility="gone"
+        app:tint="@color/text_secondary" />
+</LinearLayout>

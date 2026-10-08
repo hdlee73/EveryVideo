@@ -7,77 +7,96 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import androidx.documentfile.provider.DocumentFile
+import com.everyvideo.player.data.Prefs
 import java.io.File
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/**
+ * 캡쳐 이미지와 동영상을 저장한다.
+ * 사용자가 고른 폴더(SAF 트리)가 있으면 거기에, 없으면 사진/EveryVideo, 동영상/EveryVideo 에 저장한다.
+ */
 object MediaStoreSaver {
     const val FOLDER = "EveryVideo"
+    const val DEFAULT_IMAGE_LABEL = "사진/EveryVideo"
+    const val DEFAULT_VIDEO_LABEL = "동영상/EveryVideo"
 
     fun stamp(): String = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
 
-    fun saveImage(context: Context, bitmap: Bitmap, baseName: String): Uri {
-        val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "$baseName.png")
-            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-            if (Build.VERSION.SDK_INT >= 29) {
-                put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/$FOLDER")
-                put(MediaStore.Images.Media.IS_PENDING, 1)
-            } else {
-                val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), FOLDER)
-                dir.mkdirs()
-                @Suppress("DEPRECATION")
-                put(MediaStore.Images.Media.DATA, File(dir, "$baseName.png").absolutePath)
+    fun cleanName(name: String, ext: String): String {
+        val base = name.trim().removeSuffix(".$ext").replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { stamp() }
+        return "$base.$ext"
+    }
+
+    /** 쓰기용으로 만든 파일. 다 쓰고 나서 [finish] 를 불러야 갤러리에 나타난다. */
+    class Target(val uri: Uri, private val pendingMediaStore: Boolean) {
+        fun finish(context: Context) {
+            if (pendingMediaStore && Build.VERSION.SDK_INT >= 29) {
+                context.contentResolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
             }
         }
-        val resolver = context.contentResolver
-        val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-            ?: throw IOException("이미지를 저장할 수 없습니다")
-        resolver.openOutputStream(uri)!!.use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        if (Build.VERSION.SDK_INT >= 29) {
-            resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
-        }
-        return uri
-    }
 
-    /** 새 동영상 항목을 만든다. 쓰기가 끝나면 [publish] 를 불러야 갤러리에 보인다. */
-    fun createVideo(context: Context, baseName: String): Uri {
-        val values = ContentValues().apply {
-            put(MediaStore.Video.Media.DISPLAY_NAME, "$baseName.mp4")
-            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-            if (Build.VERSION.SDK_INT >= 29) {
-                put(MediaStore.Video.Media.RELATIVE_PATH, "${Environment.DIRECTORY_MOVIES}/$FOLDER")
-                put(MediaStore.Video.Media.IS_PENDING, 1)
-            } else {
-                val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), FOLDER)
-                dir.mkdirs()
-                @Suppress("DEPRECATION")
-                put(MediaStore.Video.Media.DATA, File(dir, "$baseName.mp4").absolutePath)
+        fun discard(context: Context) {
+            runCatching {
+                if (pendingMediaStore) context.contentResolver.delete(uri, null, null)
+                else DocumentFile.fromSingleUri(context, uri)?.delete()
             }
         }
-        return context.contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
-            ?: throw IOException("동영상을 저장할 수 없습니다")
     }
 
-    fun publish(context: Context, uri: Uri) {
-        if (Build.VERSION.SDK_INT >= 29) {
-            context.contentResolver.update(
-                uri, ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }, null, null
-            )
+    private fun create(context: Context, folder: Uri?, fileName: String, mime: String, image: Boolean): Target {
+        if (folder != null) {
+            val dir = DocumentFile.fromTreeUri(context, folder)
+            val file = dir?.takeIf { it.canWrite() }?.createFile(mime, fileName)
+            if (file != null) return Target(file.uri, false)
+            // 폴더 권한이 사라졌으면 기본 위치로 저장
         }
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+            put(MediaStore.MediaColumns.MIME_TYPE, mime)
+            val dirName = if (image) Environment.DIRECTORY_PICTURES else Environment.DIRECTORY_MOVIES
+            if (Build.VERSION.SDK_INT >= 29) {
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "$dirName/$FOLDER")
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            } else {
+                val dir = File(Environment.getExternalStoragePublicDirectory(dirName), FOLDER)
+                dir.mkdirs()
+                @Suppress("DEPRECATION")
+                put(MediaStore.MediaColumns.DATA, File(dir, fileName).absolutePath)
+            }
+        }
+        val collection = if (image) MediaStore.Images.Media.EXTERNAL_CONTENT_URI else MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        val uri = context.contentResolver.insert(collection, values) ?: throw IOException("파일을 만들 수 없습니다")
+        return Target(uri, true)
     }
 
-    fun saveVideoFile(context: Context, file: File, baseName: String): Uri {
-        val uri = createVideo(context, baseName)
+    fun createVideo(context: Context, name: String): Target =
+        create(context, Prefs(context).videoFolder, cleanName(name, "mp4"), "video/mp4", false)
+
+    fun saveImage(context: Context, bitmap: Bitmap, name: String, folder: Uri? = Prefs(context).imageFolder): Uri {
+        val t = create(context, folder, cleanName(name, "png"), "image/png", true)
         try {
-            context.contentResolver.openOutputStream(uri)!!.use { out -> file.inputStream().use { it.copyTo(out) } }
-            publish(context, uri)
+            context.contentResolver.openOutputStream(t.uri)!!.use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            t.finish(context)
         } catch (e: Exception) {
-            context.contentResolver.delete(uri, null, null)
+            t.discard(context)
             throw e
         }
-        return uri
+        return t.uri
+    }
+
+    fun saveVideoFile(context: Context, file: File, name: String, folder: Uri? = Prefs(context).videoFolder): Uri {
+        val t = create(context, folder, cleanName(name, "mp4"), "video/mp4", false)
+        try {
+            context.contentResolver.openOutputStream(t.uri)!!.use { out -> file.inputStream().use { it.copyTo(out) } }
+            t.finish(context)
+        } catch (e: Exception) {
+            t.discard(context)
+            throw e
+        }
+        return t.uri
     }
 }

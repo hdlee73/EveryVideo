@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:id="@+id/rangeBox"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:layout_weight="1"
+            android:hint="시작">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/start"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="time" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:hint="끝">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/end"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="time" />
+        </com.google.android.material.textfield.TextInputLayout>
+    </LinearLayout>
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/nameLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="파일 이름">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text"
+            android:maxLines="1" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <LinearLayout
+        android:id="@+id/folderRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/bg_choice"
+        android:gravity="center_vertical"
+        android:minHeight="56dp"
+        android:orientation="horizontal"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp">
+
+        <ImageView
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:layout_marginEnd="14dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_folder"
+            app:tint="?attr/colorPrimary" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="저장 위치"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/folder"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="middle"
+                android:singleLine="true"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="15sp" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="변경"
+            android:textColor="?attr/colorPrimary"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/removeAudio"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="소리 빼고 저장"
+        android:textSize="15sp"
+        android:visibility="gone" />
+</LinearLayout>

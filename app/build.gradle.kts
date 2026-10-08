@@ -38,6 +38,10 @@ android {
         }
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -66,6 +70,9 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.fragment:fragment-ktx:1.8.5")
+    implementation("androidx.drawerlayout:drawerlayout:1.2.0")
+    implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
     implementation("androidx.media3:media3-exoplayer:$media3")

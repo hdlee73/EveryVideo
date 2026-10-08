@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_queue_row"
+    android:descendantFocusability="blocksDescendants"
+    android:gravity="center_vertical"
+    android:minHeight="52dp"
+    android:orientation="horizontal"
+    android:paddingStart="12dp"
+    android:paddingEnd="4dp">
+
+    <TextView
+        android:id="@+id/num"
+        android:layout_width="28dp"
+        android:layout_height="wrap_content"
+        android:textColor="#99FFFFFF"
+        android:textSize="13sp" />
+
+    <ImageView
+        android:id="@+id/playing"
+        android:layout_width="18dp"
+        android:layout_height="18dp"
+        android:layout_marginEnd="10dp"
+        android:importantForAccessibility="no"
+        android:src="@drawable/ic_play"
+        android:visibility="gone"
+        app:tint="#FFBFC3FF" />
+
+    <TextView
+        android:id="@+id/name"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:textColor="@android:color/white"
+        android:textSize="14sp" />
+
+    <ImageButton
+        android:id="@+id/more"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="더보기"
+        android:focusable="false"
+        android:padding="10dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_more"
+        app:tint="#B3FFFFFF" />
+</LinearLayout>

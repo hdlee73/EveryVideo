@@ -10,7 +10,6 @@ import android.hardware.display.VirtualDisplay
 import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
-import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
@@ -21,6 +20,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.everyvideo.player.App
 import com.everyvideo.player.R
+import com.everyvideo.player.data.Prefs
 import com.everyvideo.player.media.MediaStoreSaver
 
 /** MediaProjection 으로 화면을 MP4 로 녹화하는 포그라운드 서비스. */
@@ -42,7 +42,7 @@ class ScreenRecordService : Service() {
     private var projection: MediaProjection? = null
     private var display: VirtualDisplay? = null
     private var recorder: MediaRecorder? = null
-    private var output: Uri? = null
+    private var output: MediaStoreSaver.Target? = null
     private var outputFd: ParcelFileDescriptor? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -109,9 +109,9 @@ class ScreenRecordService : Service() {
             width -= width % 2
             height -= height % 2
 
-            val uri = MediaStoreSaver.createVideo(this, "screen_${MediaStoreSaver.stamp()}")
-            output = uri
-            val fd = contentResolver.openFileDescriptor(uri, "w") ?: throw IllegalStateException("파일을 만들 수 없습니다")
+            val target = MediaStoreSaver.createVideo(this, "screen_${MediaStoreSaver.stamp()}")
+            output = target
+            val fd = contentResolver.openFileDescriptor(target.uri, "w") ?: throw IllegalStateException("파일을 만들 수 없습니다")
             outputFd = fd
 
             val rec = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(this) else @Suppress("DEPRECATION") MediaRecorder()
@@ -157,7 +157,7 @@ class ScreenRecordService : Service() {
         }
         cleanup(ok)
         Toast.makeText(
-            this, if (ok) "녹화 저장: 동영상/${MediaStoreSaver.FOLDER}" else "녹화가 너무 짧아 저장하지 못했습니다",
+            this, if (ok) "녹화 저장: " + Prefs(this).folderLabel(Prefs(this).videoFolder, MediaStoreSaver.DEFAULT_VIDEO_LABEL) else "녹화가 너무 짧아 저장하지 못했습니다",
             Toast.LENGTH_LONG
         ).show()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
@@ -175,9 +175,7 @@ class ScreenRecordService : Service() {
         runCatching { proj?.stop() }
         runCatching { outputFd?.close() }
         outputFd = null
-        output?.let { uri ->
-            if (success) MediaStoreSaver.publish(this, uri) else runCatching { contentResolver.delete(uri, null, null) }
-        }
+        output?.let { t -> if (success) t.finish(this) else t.discard(this) }
         output = null
     }
 

@@ -1,23 +1,78 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.EveryVideo" parent="Theme.Material3.DayNight">
-        <item name="colorPrimary">@color/brand</item>
-        <item name="colorSecondary">@color/accent</item>
+    <style name="Base.EveryVideo" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorOnPrimary">@color/on_primary</item>
+        <item name="colorPrimaryContainer">@color/primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/on_primary_container</item>
+        <item name="colorSecondaryContainer">@color/primary_container</item>
+        <item name="colorOnSecondaryContainer">@color/on_primary_container</item>
+        <item name="colorSurface">@color/surface</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+        <item name="colorOnSurfaceVariant">@color/text_secondary</item>
+        <item name="android:colorBackground">@color/content_bg</item>
+        <item name="android:windowBackground">@color/content_bg</item>
+        <item name="android:statusBarColor">@color/sidebar</item>
+        <item name="android:navigationBarColor">@color/content_bg</item>
+        <item name="android:windowLightStatusBar">@bool/light_bars</item>
+        <item name="android:windowLightNavigationBar">@bool/light_bars</item>
+        <item name="textInputStyle">@style/Widget.EveryVideo.TextInput</item>
+        <item name="materialSwitchStyle">@style/Widget.Material3.CompoundButton.MaterialSwitch</item>
     </style>
 
+    <style name="Theme.EveryVideo" parent="Base.EveryVideo" />
+
     <style name="Theme.EveryVideo.Player" parent="Theme.Material3.Dark.NoActionBar">
-        <item name="colorPrimary">@color/brand</item>
+        <item name="colorPrimary">#FFBFC3FF</item>
+        <item name="colorOnPrimary">#FF1A2180</item>
+        <item name="colorPrimaryContainer">#FF353FA0</item>
+        <item name="colorOnPrimaryContainer">#FFE1E0FF</item>
+        <item name="colorSecondaryContainer">#FF353FA0</item>
+        <item name="colorOnSecondaryContainer">#FFE1E0FF</item>
+        <item name="colorSurface">#FF1F1F24</item>
+        <item name="colorOnSurface">#FFE6E1E6</item>
+        <item name="colorOnSurfaceVariant">#FFB0ACB6</item>
         <item name="android:windowBackground">@android:color/black</item>
         <item name="android:statusBarColor">@android:color/black</item>
         <item name="android:navigationBarColor">@android:color/black</item>
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="textInputStyle">@style/Widget.EveryVideo.TextInput</item>
     </style>
 
-    <style name="Theme.EveryVideo.Transparent" parent="Theme.Material3.DayNight.NoActionBar">
+    <style name="Theme.EveryVideo.Transparent" parent="Base.EveryVideo">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+    </style>
+
+    <style name="Widget.EveryVideo.TextInput" parent="Widget.Material3.TextInputLayout.OutlinedBox">
+        <item name="boxCornerRadiusTopStart">14dp</item>
+        <item name="boxCornerRadiusTopEnd">14dp</item>
+        <item name="boxCornerRadiusBottomStart">14dp</item>
+        <item name="boxCornerRadiusBottomEnd">14dp</item>
+    </style>
+
+    <style name="EveryVideo.Button" parent="Widget.Material3.Button">
+        <item name="android:minHeight">48dp</item>
+        <item name="android:paddingStart">22dp</item>
+        <item name="android:paddingEnd">22dp</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="EveryVideo.Button.Tonal" parent="Widget.Material3.Button.TonalButton">
+        <item name="android:minHeight">48dp</item>
+        <item name="android:paddingStart">22dp</item>
+        <item name="android:paddingEnd">22dp</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="EveryVideo.Button.Text" parent="Widget.Material3.Button.TextButton">
+        <item name="android:minHeight">48dp</item>
+        <item name="android:textSize">15sp</item>
     </style>
 
     <style name="PlayerIcon">

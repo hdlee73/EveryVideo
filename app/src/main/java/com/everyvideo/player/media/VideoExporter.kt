@@ -40,7 +40,7 @@ class VideoExporter(private val context: Context) {
     private val handler = Handler(Looper.getMainLooper())
     private var progressTask: Runnable? = null
 
-    private fun buildTransformer(cb: Callback, out: File, baseName: String): Transformer {
+    private fun buildTransformer(cb: Callback, out: File, baseName: String, folder: Uri?): Transformer {
         val assetLoader = DefaultAssetLoaderFactory(
             context,
             DefaultDecoderFactory.Builder(context).setEnableDecoderFallback(true).build(),
@@ -58,7 +58,7 @@ class VideoExporter(private val context: Context) {
                     cb.onProgress(100)
                     Thread {
                         try {
-                            val uri = MediaStoreSaver.saveVideoFile(context, out, baseName)
+                            val uri = MediaStoreSaver.saveVideoFile(context, out, baseName, folder)
                             handler.post { cb.onDone(uri) }
                         } catch (e: Exception) {
                             handler.post { cb.onError(e.message ?: "저장 실패") }
@@ -101,7 +101,7 @@ class VideoExporter(private val context: Context) {
     private fun tempFile() = File(context.cacheDir, "export_${System.nanoTime()}.mp4")
 
     /** 한 동영상에서 [startMs, endMs] 구간만 새 동영상으로 저장한다. */
-    fun exportClip(uri: Uri, startMs: Long, endMs: Long, removeAudio: Boolean, baseName: String, cb: Callback) {
+    fun exportClip(uri: Uri, startMs: Long, endMs: Long, removeAudio: Boolean, baseName: String, folder: Uri?, cb: Callback) {
         val item = MediaItem.Builder()
             .setUri(uri)
             .setClippingConfiguration(
@@ -113,20 +113,20 @@ class VideoExporter(private val context: Context) {
             .build()
         val edited = EditedMediaItem.Builder(item).setRemoveAudio(removeAudio).build()
         val out = tempFile()
-        val t = buildTransformer(cb, out, baseName)
+        val t = buildTransformer(cb, out, baseName, folder)
         transformer = t
         t.start(edited, out.absolutePath)
         startProgress(t, cb)
     }
 
     /** 여러 동영상을 순서대로 이어붙인다. 해상도가 다르면 targetHeight 로 맞춘다. */
-    fun exportConcat(uris: List<Uri>, targetHeight: Int, baseName: String, cb: Callback) {
+    fun exportConcat(uris: List<Uri>, targetHeight: Int, baseName: String, folder: Uri?, cb: Callback) {
         val items = uris.map { EditedMediaItem.Builder(MediaItem.fromUri(it)).build() }
         val composition = Composition.Builder(EditedMediaItemSequence(items))
             .setEffects(Effects(emptyList(), listOf(Presentation.createForHeight(targetHeight))))
             .build()
         val out = tempFile()
-        val t = buildTransformer(cb, out, baseName)
+        val t = buildTransformer(cb, out, baseName, folder)
         transformer = t
         t.start(composition, out.absolutePath)
         startProgress(t, cb)
