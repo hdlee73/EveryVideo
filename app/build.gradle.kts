@@ -1,3 +1,6 @@
+import java.time.LocalDate
+import java.time.ZoneId
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -17,7 +20,7 @@ android {
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
         versionName = System.getenv("VERSION_NAME") ?: "0.1.0"
         // 앱 정보에 보여줄 빌드(업데이트) 날짜
-        val buildDate = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).toString()
+        val buildDate = LocalDate.now(ZoneId.of("Asia/Seoul")).toString()
         buildConfigField("String", "BUILD_DATE", "\"$buildDate\"")
     }
 
