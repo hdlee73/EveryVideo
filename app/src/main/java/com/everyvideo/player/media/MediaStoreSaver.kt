@@ -76,10 +76,26 @@ object MediaStoreSaver {
     fun createVideo(context: Context, name: String): Target =
         create(context, Prefs(context).videoFolder, cleanName(name, "mp4"), "video/mp4", false)
 
-    fun saveImage(context: Context, bitmap: Bitmap, name: String, folder: Uri? = Prefs(context).imageFolder): Uri {
-        val t = create(context, folder, cleanName(name, "png"), "image/png", true)
+    fun saveImage(context: Context, bitmap: Bitmap, name: String, folder: Uri? = Prefs(context).imageFolder, jpeg: Boolean = false): Uri {
+        val t = if (jpeg) create(context, folder, cleanName(name, "jpg"), "image/jpeg", true)
+        else create(context, folder, cleanName(name, "png"), "image/png", true)
         try {
-            context.contentResolver.openOutputStream(t.uri)!!.use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            context.contentResolver.openOutputStream(t.uri)!!.use {
+                if (jpeg) bitmap.compress(Bitmap.CompressFormat.JPEG, 92, it) else bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+            }
+            t.finish(context)
+        } catch (e: Exception) {
+            t.discard(context)
+            throw e
+        }
+        return t.uri
+    }
+
+    /** 만들어 둔 GIF 파일을 사진 폴더(또는 고른 폴더)로 옮겨 담는다. */
+    fun saveGifFile(context: Context, file: File, name: String, folder: Uri?): Uri {
+        val t = create(context, folder, cleanName(name, "gif"), "image/gif", true)
+        try {
+            context.contentResolver.openOutputStream(t.uri)!!.use { out -> file.inputStream().use { it.copyTo(out) } }
             t.finish(context)
         } catch (e: Exception) {
             t.discard(context)

@@ -137,6 +137,17 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // 재생 화면에서 정한 밝기를 앱 화면에도 적용 (최대로 했으면 기기 최대 밝기)
+        com.everyvideo.player.data.Prefs(this).brightnessLevel.let { level ->
+            val lp = window.attributes
+            lp.screenBrightness = when {
+                level == null -> android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                level >= 100 -> android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL
+                level <= 0 -> 0.02f
+                else -> Math.pow(level / 100.0, 2.2).toFloat().coerceAtLeast(0.02f)
+            }
+            window.attributes = lp
+        }
         navRows["record"]?.findViewById<TextView>(R.id.label)?.text =
             if (ScreenRecordService.isRecording) "녹화 중지" else "화면 녹화"
     }

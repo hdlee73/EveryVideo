@@ -6,6 +6,9 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.graphics.Bitmap
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
@@ -23,12 +26,10 @@ import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
-import android.widget.BaseAdapter
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
-import android.widget.ListView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -37,6 +38,8 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -61,7 +64,9 @@ import com.everyvideo.player.data.Playlist
 import com.everyvideo.player.data.PlaylistItem
 import com.everyvideo.player.data.Prefs
 import com.everyvideo.player.data.Recent
+import com.everyvideo.player.media.GifMaker
 import com.everyvideo.player.media.MediaStoreSaver
+import com.everyvideo.player.media.Thumbnails
 import com.everyvideo.player.media.VideoExporter
 import com.everyvideo.player.net.MediaSources
 import com.everyvideo.player.net.RemoteUris
@@ -84,7 +89,10 @@ class PlayerActivity : AppCompatActivity() {
         const val EXTRA_PLAYLIST_ID = "playlistId"
         private const val HIDE_DELAY = 4000L
         private const val MAX_ZOOM = 5f
-        private val SPEEDS = floatArrayOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f, 4f)
+        private val SPEEDS = floatArrayOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f, 4f, 5f, 6f, 8f, 10f, 12f, 16f, 20f)
+        /** 이보다 빠르면 안드로이드 소리 처리 한계로 소리를 끄고 화면만 빠르게 재생한다. */
+        private const val MAX_AUDIO_SPEED = 8f
+        private const val MAX_BRIGHTNESS = 200
     }
 
     private val db by lazy { (application as App).db }
@@ -121,7 +129,11 @@ class PlayerActivity : AppCompatActivity() {
     private lateinit var brightnessSlider: Slider
     private lateinit var volumeSlider: Slider
     private lateinit var queuePanel: View
-    private lateinit var queueList: ListView
+    private lateinit var queueList: RecyclerView
+    private lateinit var btnSpeedReset: TextView
+    private lateinit var sectionPanel: View
+    private lateinit var sectionInfo: TextView
+    private lateinit var sectionBar: SectionBar
     private lateinit var queueInfo: TextView
     private val queueAdapter = QueueAdapter()
 
@@ -137,6 +149,9 @@ class PlayerActivity : AppCompatActivity() {
     private var orientationChosen = false
     private var volumeAccumulator = 0f
     private var zoom = 1f
+    /** 구간 편집: 저장하거나 지울 구간들 (시작 순으로 정렬). */
+    private val sections = mutableListOf<Pair<Long, Long>>()
+    private var sectionStart = C.TIME_UNSET
 
     private val hideControls = Runnable { setControlsVisible(false) }
     private val hideIndicator = Runnable { indicator.visibility = View.GONE }
@@ -236,18 +251,29 @@ class PlayerActivity : AppCompatActivity() {
         queuePanel = findViewById(R.id.queuePanel)
         queueList = findViewById(R.id.queueList)
         queueInfo = findViewById(R.id.queueInfo)
+        btnSpeedReset = findViewById(R.id.btnSpeedReset)
+        sectionPanel = findViewById(R.id.sectionPanel)
+        sectionInfo = findViewById(R.id.sectionInfo)
+        sectionBar = findViewById(R.id.sectionBar)
 
         findViewById<View>(R.id.btnBack).setOnClickListener { finish() }
         btnPlay.setOnClickListener { togglePlay() }
         findViewById<View>(R.id.btnRew).setOnClickListener { seekBy(-10_000) }
         findViewById<View>(R.id.btnFwd).setOnClickListener { seekBy(10_000) }
         findViewById<View>(R.id.btnPrev).setOnClickListener {
-            if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem() else player.seekTo(0)
+            when {
+                abActive() -> { player.seekTo(abStart); showIndicator("구간반복 처음으로", R.drawable.ic_repeat) }
+                player.hasPreviousMediaItem() -> player.seekToPreviousMediaItem()
+                else -> player.seekTo(0)
+            }
         }
         findViewById<View>(R.id.btnNext).setOnClickListener {
             if (player.hasNextMediaItem()) player.seekToNextMediaItem() else showIndicator("다음 동영상이 없습니다", R.drawable.ic_next)
         }
         btnSpeed.setOnClickListener { showSpeedDialog() }
+        btnSpeed.setOnLongClickListener { setSpeed(1f); true }
+        btnSpeedReset.setOnClickListener { setSpeed(1f) }
+        positionText.setOnClickListener { showJumpDialog() }
         btnAb.setOnClickListener { cycleAbRepeat() }
         btnRepeat.setOnClickListener { cycleRepeatMode() }
         findViewById<View>(R.id.btnTracks).setOnClickListener { showTracksMenu() }
@@ -257,7 +283,15 @@ class PlayerActivity : AppCompatActivity() {
         btnUnlock.setOnClickListener { setLocked(false) }
         findViewById<View>(R.id.btnAdjust).setOnClickListener { toggleAdjustPanel() }
         findViewById<View>(R.id.btnCapture).setOnClickListener { captureFrame() }
-        findViewById<View>(R.id.btnClip).setOnClickListener { showClipDialog() }
+        findViewById<View>(R.id.btnClip).setOnClickListener { toggleSectionPanel() }
+        findViewById<View>(R.id.btnThumb).setOnClickListener { makeThumbnail() }
+        findViewById<View>(R.id.sectionClose).setOnClickListener { toggleSectionPanel() }
+        findViewById<View>(R.id.secIn).setOnClickListener { markSectionStart() }
+        findViewById<View>(R.id.secOut).setOnClickListener { markSectionEnd() }
+        findViewById<View>(R.id.secList).setOnClickListener { showSectionList() }
+        findViewById<View>(R.id.secSave).setOnClickListener { saveSections() }
+        findViewById<View>(R.id.secDelete).setOnClickListener { deleteSections() }
+        findViewById<View>(R.id.secGif).setOnClickListener { makeGif() }
         findViewById<View>(R.id.btnBookmarkAdd).setOnClickListener { addBookmark() }
         findViewById<View>(R.id.btnBookmarks).setOnClickListener { showBookmarks() }
         findViewById<View>(R.id.btnRotate).setOnClickListener { rotate() }
@@ -272,6 +306,10 @@ class PlayerActivity : AppCompatActivity() {
             }
         }
         zoomChip.setOnClickListener { resetZoom() }
+        // 화면을 돌리거나 크기가 바뀌면 이동 범위를 다시 맞춘다
+        playerView.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or, ob ->
+            if (r - l != or - ol || b - t != ob - ot) clampPan()
+        }
 
         timeBar.addListener(object : TimeBar.OnScrubListener {
             override fun onScrubStart(timeBar: TimeBar, position: Long) {
@@ -288,7 +326,11 @@ class PlayerActivity : AppCompatActivity() {
             override fun onScrubStop(timeBar: TimeBar, position: Long, canceled: Boolean) {
                 scrubbing = false
                 hidePreview()
-                if (!canceled) player.seekTo(position)
+                if (!canceled) {
+                    val target = clampToAb(position)
+                    if (target != position) showIndicator("구간반복 중에는 구간 안에서만 이동합니다", R.drawable.ic_repeat)
+                    player.seekTo(target)
+                }
                 scheduleHide()
             }
         })
@@ -344,11 +386,11 @@ class PlayerActivity : AppCompatActivity() {
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 onItemChanged(mediaItem)
-                refreshQueue()
+                if (!queueDragging) refreshQueue()
             }
 
             override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
-                if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) refreshQueue()
+                if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED && !queueDragging) refreshQueue()
             }
 
             override fun onVideoSizeChanged(videoSize: VideoSize) {
@@ -441,6 +483,9 @@ class PlayerActivity : AppCompatActivity() {
         item ?: return
         titleText.text = item.mediaMetadata.title
         clearAb()
+        sections.clear()
+        sectionStart = C.TIME_UNSET
+        if (::sectionBar.isInitialized) updateSections()
         previewPlayer?.let { p ->
             p.setMediaItem(item)
             p.prepare()
@@ -495,6 +540,7 @@ class PlayerActivity : AppCompatActivity() {
         if (duration > 0) {
             timeBar.setDuration(duration)
             durationText.text = Util.formatTime(duration)
+            sectionBar.duration = duration
         }
     }
 
@@ -516,20 +562,26 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun scheduleHide() {
         handler.removeCallbacks(hideControls)
-        val busy = scrubbing || adjustPanel.visibility == View.VISIBLE || queuePanel.visibility == View.VISIBLE
+        val busy = scrubbing || adjustPanel.visibility == View.VISIBLE || queuePanel.visibility == View.VISIBLE ||
+            sectionPanel.visibility == View.VISIBLE
         if (player.isPlaying && !busy) handler.postDelayed(hideControls, HIDE_DELAY)
     }
 
     private fun togglePlay() {
         if (player.isPlaying) player.pause() else {
-            if (player.playbackState == Player.STATE_ENDED) player.seekTo(0)
+            if (player.playbackState == Player.STATE_ENDED) player.seekTo(if (abActive()) abStart else 0)
             player.play()
         }
     }
 
+    private fun abActive() = abStart != C.TIME_UNSET && abEnd != C.TIME_UNSET
+
+    /** 구간반복(A-B)이 켜져 있으면 그 안으로 묶는다. */
+    private fun clampToAb(target: Long): Long = if (abActive()) target.coerceIn(abStart, abEnd) else target
+
     private fun seekBy(deltaMs: Long) {
         val duration = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
-        val target = (player.currentPosition + deltaMs).coerceIn(0, duration)
+        val target = clampToAb((player.currentPosition + deltaMs).coerceIn(0, duration))
         player.seekTo(target)
         showIndicator(
             (if (deltaMs > 0) "+" else "-") + "${abs(deltaMs) / 1000}초   ${Util.formatTime(target)}",
@@ -538,7 +590,7 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     /** 가운데 둥근 안내. percent 가 있으면 막대도 보여준다. */
-    private fun showIndicator(text: String, icon: Int? = null, percent: Int? = null) {
+    private fun showIndicator(text: String, icon: Int? = null, percent: Int? = null, duration: Long = 900) {
         indicatorText.text = text
         if (icon != null) {
             indicatorIcon.setImageResource(icon)
@@ -550,7 +602,7 @@ class PlayerActivity : AppCompatActivity() {
         } else indicatorBar.visibility = View.GONE
         indicator.visibility = View.VISIBLE
         handler.removeCallbacks(hideIndicator)
-        handler.postDelayed(hideIndicator, 900)
+        handler.postDelayed(hideIndicator, duration)
     }
 
     private fun applyFullscreen() {
@@ -642,7 +694,12 @@ class PlayerActivity : AppCompatActivity() {
                     queuePanel.visibility == View.VISIBLE -> toggleQueue()
                     adjustPanel.visibility == View.VISIBLE -> toggleAdjustPanel()
                     locked -> setControlsVisible(true)
-                    else -> setControlsVisible(controls.visibility != View.VISIBLE)
+                    else -> {
+                        // 화면을 한 번 누르면 재생/정지
+                        togglePlay()
+                        showIndicator(if (player.playWhenReady) "재생" else "일시정지", if (player.playWhenReady) R.drawable.ic_play else R.drawable.ic_pause)
+                        setControlsVisible(true)
+                    }
                 }
                 return true
             }
@@ -653,7 +710,8 @@ class PlayerActivity : AppCompatActivity() {
                 when {
                     e.x < w / 3f -> seekBy(-10_000)
                     e.x > w * 2 / 3f -> seekBy(10_000)
-                    else -> togglePlay()
+                    // 가운데 두 번 누르기: 조작 버튼 숨기기/보이기
+                    else -> setControlsVisible(controls.visibility != View.VISIBLE)
                 }
                 return true
             }
@@ -675,7 +733,7 @@ class PlayerActivity : AppCompatActivity() {
                     3 -> {
                         val delta = ((e2.x - e1.x) / layer.width * 120_000).toLong()
                         val duration = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
-                        seekTarget = (seekStartPos + delta).coerceIn(0, duration)
+                        seekTarget = clampToAb((seekStartPos + delta).coerceIn(0, duration))
                         showIndicator(
                             Util.formatTime(seekTarget) + "  (" + (if (delta >= 0) "+" else "-") + "${abs(delta) / 1000}초)",
                             if (delta >= 0) R.drawable.ic_forward10 else R.drawable.ic_replay10
@@ -726,11 +784,30 @@ class PlayerActivity : AppCompatActivity() {
         clampPan()
     }
 
+    /**
+     * 확대한 영상의 가장자리까지 정확히 옮길 수 있게 이동 범위를 제한한다.
+     * 영상이 화면보다 작은 방향(위아래 검은 띠 등)은 가운데에 둔다.
+     */
     private fun clampPan() {
-        val maxX = (zoom - 1f) * playerView.width / 2f
-        val maxY = (zoom - 1f) * playerView.height / 2f
+        val vw = playerView.width.toFloat()
+        val vh = playerView.height.toFloat()
+        val (cw, ch) = contentSize(vw, vh)
+        val maxX = ((cw * zoom - vw) / 2f).coerceAtLeast(0f)
+        val maxY = ((ch * zoom - vh) / 2f).coerceAtLeast(0f)
         playerView.translationX = playerView.translationX.coerceIn(-maxX, maxX)
         playerView.translationY = playerView.translationY.coerceIn(-maxY, maxY)
+    }
+
+    /** 확대 전 화면 위에서 영상이 실제로 차지하는 크기. */
+    private fun contentSize(vw: Float, vh: Float): Pair<Float, Float> {
+        val size = player.videoSize
+        if (size.width <= 0 || size.height <= 0 || vw <= 0 || vh <= 0) return vw to vh
+        val ratio = size.width * size.pixelWidthHeightRatio / size.height
+        return when (playerView.resizeMode) {
+            AspectRatioFrameLayout.RESIZE_MODE_FIT -> if (vw / vh > ratio) (vh * ratio) to vh else vw to (vw / ratio)
+            // 화면 채우기·늘리기는 영상이 화면 전체를 덮는다
+            else -> vw to vh
+        }
     }
 
     private fun resetZoom() {
@@ -741,8 +818,10 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     /**
-     * 밝기 단계: -50 ~ 100. 0~100 은 화면 밝기(눈에 보이는 변화가 고르게 감마 곡선 적용),
-     * 0 미만은 화면을 최저로 둔 채 검은 막을 덧씌워 더 어둡게 한다.
+     * 밝기 단계: -50 ~ 200.
+     *  0~100  화면 밝기(감마 곡선, 100 이면 기기 최대 밝기)
+     *  100~200 기기 최대 밝기에서 영상 자체를 더 밝게 (색 보정 필터로 최대 2.2배)
+     *  0 미만  화면을 최저로 둔 채 검은 막을 덧씌워 더 어둡게
      */
     private var brightnessLevel: Int? = null
 
@@ -757,32 +836,61 @@ class PlayerActivity : AppCompatActivity() {
         brightnessLevel = level
         val lp = window.attributes
         val dim = findViewById<View>(R.id.dimOverlay)
+        var boost = 0f
         if (level == null) {
             lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
             dim.alpha = 0f
         } else {
-            val l = level.coerceIn(-50, 100)
-            lp.screenBrightness = if (l <= 0) 0.004f else Math.pow(l / 100.0, 2.2).toFloat().coerceAtLeast(0.004f)
-            dim.alpha = if (l < 0) -l / 50f * 0.75f else 0f
+            val l = level.coerceIn(-50, MAX_BRIGHTNESS)
+            lp.screenBrightness = when {
+                l <= 0 -> 0.004f
+                l >= 100 -> WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL
+                else -> Math.pow(l / 100.0, 2.2).toFloat().coerceAtLeast(0.004f)
+            }
+            dim.alpha = if (l < 0) -l / 50f * 0.8f else 0f
+            if (l > 100) boost = (l - 100) / 100f
         }
         window.attributes = lp
+        applyVideoBoost(boost)
         prefs.brightnessLevel = level
     }
 
-    private fun brightnessLabel(level: Int) = if (level < 0) "밝기 0% · 더 어둡게 ${-level * 2}%" else "밝기 $level%"
+    /** 영상 화면(TextureView)에 색 보정을 걸어 기기 최대 밝기보다 더 밝아 보이게 한다. boost 0~1. */
+    private fun applyVideoBoost(boost: Float) {
+        val texture = playerView.videoSurfaceView as? TextureView ?: return
+        if (boost <= 0f) {
+            texture.setLayerPaint(null)
+            return
+        }
+        val gain = 1f + boost * 1.2f          // 밝은 부분까지 함께 키움
+        val lift = boost * 28f                // 어두운 부분을 끌어올림
+        val m = ColorMatrix(floatArrayOf(
+            gain, 0f, 0f, 0f, lift,
+            0f, gain, 0f, 0f, lift,
+            0f, 0f, gain, 0f, lift,
+            0f, 0f, 0f, 1f, 0f
+        ))
+        texture.setLayerPaint(Paint().apply { colorFilter = ColorMatrixColorFilter(m) })
+    }
+
+    private fun brightnessLabel(level: Int) = when {
+        level < 0 -> "밝기 0% · 더 어둡게 ${-level * 2}%"
+        level > 100 -> "최대 밝기 · 영상 더 밝게 +${level - 100}%"
+        else -> "밝기 $level%"
+    }
 
     private var brightnessAccumulator = 0f
 
     private fun changeBrightness(delta: Float) {
-        // 화면 높이만큼 밀면 150단계 변화
-        brightnessAccumulator += delta * 150f
+        // 화면 높이의 절반만 밀어도 끝에서 끝까지 (250단계)
+        brightnessAccumulator += delta * 500f
         val steps = brightnessAccumulator.toInt()
         if (steps != 0) {
             brightnessAccumulator -= steps
-            applyBrightness((currentBrightnessLevel() + steps).coerceIn(-50, 100))
+            applyBrightness((currentBrightnessLevel() + steps).coerceIn(-50, MAX_BRIGHTNESS))
         }
         val level = currentBrightnessLevel()
-        showIndicator(brightnessLabel(level), R.drawable.ic_brightness, ((level + 50) * 100 / 150))
+        showIndicator(brightnessLabel(level), R.drawable.ic_brightness, ((level + 50) * 100 / (MAX_BRIGHTNESS + 50)))
         syncAdjustPanel()
     }
 
@@ -847,7 +955,11 @@ class PlayerActivity : AppCompatActivity() {
         brightnessSlider.addOnChangeListener { _, value, fromUser ->
             if (fromUser) applyBrightness(value.toInt())
             val v = value.toInt()
-            findViewById<TextView>(R.id.brightnessValue).text = if (v < 0) "어둡게" else "$v%"
+            findViewById<TextView>(R.id.brightnessValue).text = when {
+                v < 0 -> "어둡게"
+                v > 100 -> "+${v - 100}%"
+                else -> "$v%"
+            }
         }
         volumeSlider.addOnChangeListener { _, value, fromUser ->
             if (fromUser) {
@@ -864,7 +976,7 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun syncAdjustPanel() {
-        brightnessSlider.value = currentBrightnessLevel().coerceIn(-50, 100).toFloat()
+        brightnessSlider.value = currentBrightnessLevel().coerceIn(-50, MAX_BRIGHTNESS).toFloat()
         volumeSlider.value = volumePercent().coerceIn(0, 100).toFloat()
     }
 
@@ -880,21 +992,26 @@ class PlayerActivity : AppCompatActivity() {
 
     // ---------------------------------------------------------------- 오른쪽 재생목록 패널
 
+    private var queueDragging = false
+    private val queueReorder = DragReorder(
+        onMove = { f, t -> queueDragging = true; player.moveMediaItem(f, t) },
+        onDrop = { _, _ -> queueDragging = false; refreshQueue(); syncPlaylist() }
+    )
+
     private fun setupQueuePanel() {
+        queueList.layoutManager = LinearLayoutManager(this)
         queueList.adapter = queueAdapter
-        queueList.setOnItemClickListener { _, _, pos, _ ->
-            player.seekTo(pos, 0)
-            player.play()
-        }
-        queueList.setOnItemLongClickListener { _, _, pos, _ -> queueItemMenu(pos); true }
+        queueReorder.attach(queueList)
         findViewById<View>(R.id.queueClose).setOnClickListener { toggleQueue() }
         findViewById<View>(R.id.queueAdd).setOnClickListener {
             picker.chooseAndPick("재생목록에 추가") { uris ->
                 player.addMediaItems(uris.map(::mediaItemOf))
                 showIndicator("${uris.size}개 추가", R.drawable.ic_add)
+                syncPlaylist()
             }
         }
         findViewById<View>(R.id.queueSave).setOnClickListener { saveQueue() }
+        findViewById<View>(R.id.queueSort).setOnClickListener { sortQueue() }
     }
 
     private fun toggleQueue() {
@@ -904,7 +1021,7 @@ class PlayerActivity : AppCompatActivity() {
             queuePanel.visibility = View.VISIBLE
             queuePanel.translationX = queuePanel.width.toFloat().takeIf { it > 0 } ?: (340 * resources.displayMetrics.density)
             queuePanel.animate().translationX(0f).setDuration(200).start()
-            queueList.setSelection((player.currentMediaItemIndex - 2).coerceAtLeast(0))
+            (queueList.layoutManager as? LinearLayoutManager)?.scrollToPositionWithOffset((player.currentMediaItemIndex - 2).coerceAtLeast(0), 0)
             setControlsVisible(false)
         } else {
             queuePanel.animate().translationX(queuePanel.width.toFloat()).setDuration(180)
@@ -912,31 +1029,52 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
+    @SuppressLint("NotifyDataSetChanged")
     private fun refreshQueue() {
         if (!::queueInfo.isInitialized) return
-        queueInfo.text = "${player.mediaItemCount}개 · 길게 눌러 순서 변경"
+        queueInfo.text = "${player.mediaItemCount}개 · 손잡이를 끌어 순서 변경 · X는 목록에서만 빼기"
         queueAdapter.notifyDataSetChanged()
     }
 
-    private fun queueItemMenu(pos: Int) {
-        val item = player.getMediaItemAt(pos)
-        AppDialog.choice(
-            this, item.mediaMetadata.title?.toString() ?: "",
-            listOf(
-                AppDialog.Companion.Item("지금 재생", icon = R.drawable.ic_play),
-                AppDialog.Companion.Item("위로 이동", icon = R.drawable.ic_up),
-                AppDialog.Companion.Item("아래로 이동", icon = R.drawable.ic_down),
-                AppDialog.Companion.Item("목록에서 빼기", icon = R.drawable.ic_delete)
-            )
-        ) { which ->
-            when (which) {
-                0 -> { player.seekTo(pos, 0); player.play() }
-                1 -> if (pos > 0) player.moveMediaItem(pos, pos - 1)
-                2 -> if (pos < player.mediaItemCount - 1) player.moveMediaItem(pos, pos + 1)
-                3 -> if (player.mediaItemCount > 1) player.removeMediaItem(pos) else Util.toast(this, "마지막 동영상은 뺄 수 없습니다")
-            }
-            refreshQueue()
+    private fun removeFromQueue(pos: Int) {
+        if (pos !in 0 until player.mediaItemCount) return
+        if (player.mediaItemCount <= 1) {
+            Util.toast(this, "마지막 동영상은 뺄 수 없습니다")
+            return
         }
+        val title = player.getMediaItemAt(pos).mediaMetadata.title
+        player.removeMediaItem(pos)
+        refreshQueue()
+        syncPlaylist()
+        showIndicator("'$title' 뺌", R.drawable.ic_delete)
+    }
+
+    private fun sortQueue() {
+        if (player.mediaItemCount < 2) return
+        Sorting.choose(this) { order ->
+            lifecycleScope.launch {
+                val items = (0 until player.mediaItemCount).map { player.getMediaItemAt(it) }
+                val sorted = Sorting.sort(
+                    this@PlayerActivity, items, order,
+                    { it.localConfiguration?.uri ?: Uri.parse(it.mediaId) }, { it.mediaMetadata.title?.toString() ?: "" }
+                )
+                // 정렬된 순서대로 하나씩 제자리로 옮긴다 (재생은 끊기지 않음)
+                sorted.forEachIndexed { target, item ->
+                    val from = (target until player.mediaItemCount).firstOrNull { player.getMediaItemAt(it).mediaId == item.mediaId } ?: return@forEachIndexed
+                    if (from != target) player.moveMediaItem(from, target)
+                }
+                refreshQueue()
+                syncPlaylist()
+                showIndicator(order.label, R.drawable.ic_sort)
+            }
+        }
+    }
+
+    /** 저장된 재생목록을 재생 중이면, 패널에서 바꾼 순서·삭제를 그 재생목록에도 반영한다. */
+    private fun syncPlaylist() {
+        val id = playlistId
+        if (id < 0) return
+        App.instance.appScope.launch { writeQueue(id) }
     }
 
     private fun queueUris(): List<Pair<String, String>> = (0 until player.mediaItemCount).map { i ->
@@ -982,13 +1120,16 @@ class PlayerActivity : AppCompatActivity() {
         dao.insertItems(queueUris().mapIndexed { i, (uri, title) -> PlaylistItem(playlistId = id, uri = uri, title = title, sort = i) })
     }
 
-    private inner class QueueAdapter : BaseAdapter() {
-        override fun getCount() = if (::player.isInitialized) player.mediaItemCount else 0
-        override fun getItem(position: Int): MediaItem = player.getMediaItemAt(position)
-        override fun getItemId(position: Int) = position.toLong()
+    private class QueueHolder(v: View) : RecyclerView.ViewHolder(v)
 
-        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-            val v = convertView ?: LayoutInflater.from(parent.context).inflate(R.layout.item_queue, parent, false)
+    private inner class QueueAdapter : RecyclerView.Adapter<QueueHolder>() {
+        override fun getItemCount() = if (::player.isInitialized) player.mediaItemCount else 0
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
+            QueueHolder(LayoutInflater.from(parent.context).inflate(R.layout.item_queue, parent, false))
+
+        override fun onBindViewHolder(holder: QueueHolder, position: Int) {
+            val v = holder.itemView
             val current = position == player.currentMediaItemIndex
             v.isSelected = current
             v.findViewById<TextView>(R.id.num).apply {
@@ -996,16 +1137,20 @@ class PlayerActivity : AppCompatActivity() {
                 visibility = if (current) View.GONE else View.VISIBLE
             }
             v.findViewById<View>(R.id.playing).visibility = if (current) View.VISIBLE else View.GONE
-            v.findViewById<TextView>(R.id.name).text = getItem(position).mediaMetadata.title
-            v.findViewById<View>(R.id.more).setOnClickListener { queueItemMenu(position) }
-            return v
+            v.findViewById<TextView>(R.id.name).text = player.getMediaItemAt(position).mediaMetadata.title
+            v.setOnClickListener {
+                val pos = holder.bindingAdapterPosition
+                if (pos >= 0) { player.seekTo(pos, 0); player.play() }
+            }
+            v.findViewById<View>(R.id.delete).setOnClickListener { removeFromQueue(holder.bindingAdapterPosition) }
+            queueReorder.bindHandle(v.findViewById(R.id.drag), holder)
         }
     }
 
     // ---------------------------------------------------------------- seek preview (작은 화면 미리보기)
 
     private fun positionAtX(v: View, x: Float, duration: Long): Long {
-        val inset = 8 * resources.displayMetrics.density
+        val inset = sectionBar.inset
         val left = v.paddingLeft + inset
         val right = v.width - v.paddingRight - inset
         val fraction = ((x - left) / (right - left)).coerceIn(0f, 1f)
@@ -1042,7 +1187,7 @@ class PlayerActivity : AppCompatActivity() {
         val rootLoc = IntArray(2)
         timeBar.getLocationInWindow(loc)
         root.getLocationInWindow(rootLoc)
-        val inset = 8 * resources.displayMetrics.density
+        val inset = sectionBar.inset
         val barLeft = loc[0] - rootLoc[0] + timeBar.paddingLeft + inset
         val barWidth = timeBar.width - timeBar.paddingLeft - timeBar.paddingRight - 2 * inset
         val centerX = barLeft + barWidth * (position.toFloat() / duration)
@@ -1063,14 +1208,44 @@ class PlayerActivity : AppCompatActivity() {
 
     // ---------------------------------------------------------------- 속도 / 구간반복 / 반복 / 트랙 / 비율
 
+    private fun speedText(v: Float) = if (v == v.toInt().toFloat()) "${v.toInt()}x" else "${v}x"
+
     private fun showSpeedDialog() {
         val current = SPEEDS.indexOfFirst { it == player.playbackParameters.speed }
         AppDialog.choice(
-            this, "재생 속도", SPEEDS.map { AppDialog.Companion.Item(if (it == 1f) "1.0x (보통)" else "${it}x") }, current
-        ) { which ->
-            player.setPlaybackSpeed(SPEEDS[which])
-            btnSpeed.text = "${SPEEDS[which]}x"
-            showIndicator("재생 속도 ${SPEEDS[which]}x", R.drawable.ic_speed)
+            this, "재생 속도",
+            SPEEDS.map {
+                AppDialog.Companion.Item(
+                    if (it == 1f) "1x (원래 속도)" else speedText(it),
+                    if (it > MAX_AUDIO_SPEED) "소리 없이 화면만 빠르게" else null
+                )
+            },
+            current,
+            message = "원래 속도로 돌아가려면 위쪽 '1x로'를 누르거나 속도 버튼을 길게 누르세요. 구간 저장은 언제나 원래 속도로 저장됩니다."
+        ) { which -> setSpeed(SPEEDS[which]) }
+    }
+
+    /** 8배를 넘으면 소리를 끄고(안드로이드 소리 처리 한계) 화면만 그 속도로 재생한다. */
+    private fun setSpeed(speed: Float) {
+        val muteAudio = speed > MAX_AUDIO_SPEED
+        val params = player.trackSelectionParameters
+        if (params.disabledTrackTypes.contains(C.TRACK_TYPE_AUDIO) != muteAudio) {
+            player.trackSelectionParameters = params.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, muteAudio).build()
+        }
+        player.setPlaybackSpeed(speed)
+        btnSpeed.text = speedText(speed)
+        btnSpeedReset.visibility = if (speed != 1f) View.VISIBLE else View.GONE
+        showIndicator(
+            if (speed == 1f) "원래 속도 (1x)" else "재생 속도 ${speedText(speed)}" + if (muteAudio) " · 소리 끔" else "",
+            R.drawable.ic_speed
+        )
+    }
+
+    private fun showJumpDialog() {
+        if (player.duration <= 0) return
+        AppDialog.input(this, "시간으로 이동", "예: 1:23:45, 12:30, 90", Util.formatTime(player.currentPosition), "이동", R.drawable.ic_forward10) { text ->
+            val t = Util.parseTime(text) ?: run { Util.toast(this, "시간 형식을 확인해 주세요"); return@input }
+            player.seekTo(clampToAb(t.coerceIn(0, player.duration)))
         }
     }
 
@@ -1088,7 +1263,7 @@ class PlayerActivity : AppCompatActivity() {
                 }
                 abEnd = pos
                 player.seekTo(abStart)
-                showIndicator("구간반복  ${Util.formatTime(abStart)} ~ ${Util.formatTime(abEnd)}", R.drawable.ic_repeat)
+                showIndicator("구간반복  ${Util.formatTime(abStart)} ~ ${Util.formatTime(abEnd)} · 이 안에서만 이동", R.drawable.ic_repeat)
             }
             else -> {
                 clearAb()
@@ -1105,6 +1280,7 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun updateAbButton() {
+        sectionBar.abRange = if (abActive()) abStart to abEnd else null
         btnAb.text = when {
             abStart == C.TIME_UNSET -> "A-B"
             abEnd == C.TIME_UNSET -> "A-?"
@@ -1204,18 +1380,29 @@ class PlayerActivity : AppCompatActivity() {
         return "${prefix}_${title}_$time".replace(Regex("[\\\\/:*?\"<>|]"), "_")
     }
 
-    /** 파일 이름 + 저장 위치(+ 구간) 입력창. 위치를 바꾸면 설정에도 저장된다. */
+    /** 저장 대화상자에서 고른 값. */
+    private class SaveChoice(val name: String, val folder: Uri?, val range: Pair<Long, Long>?, val removeAudio: Boolean, val caption: String)
+
+    /**
+     * 파일 이름 + 저장 위치(+ 구간, 소리 빼기, 썸네일 글자) 입력창. 위치를 바꾸면 설정에도 저장된다.
+     * 설정에서 '저장할 때 이름과 위치 묻기'를 끄면 묻지 않고 바로 onSave 를 부른다 (썸네일 글자는 예외).
+     */
     private fun showSaveDialog(
         title: String, icon: Int, defaultName: String, image: Boolean,
-        range: Pair<Long, Long>? = null,
-        onSave: (name: String, folder: Uri?, range: Pair<Long, Long>?, removeAudio: Boolean) -> Unit
+        range: Pair<Long, Long>? = null, audioOption: Boolean = range != null, caption: Boolean = false,
+        message: String? = null, onSave: (SaveChoice) -> Unit
     ) {
+        if (!prefs.askOnCapture && !caption) {
+            onSave(SaveChoice(defaultName, if (image) prefs.imageFolder else prefs.videoFolder, range, false, ""))
+            return
+        }
         val v = LayoutInflater.from(this).inflate(R.layout.dialog_save, null)
         val name = v.findViewById<EditText>(R.id.name)
         val folderText = v.findViewById<TextView>(R.id.folder)
         val removeAudio = v.findViewById<MaterialSwitch>(R.id.removeAudio)
         val start = v.findViewById<EditText>(R.id.start)
         val end = v.findViewById<EditText>(R.id.end)
+        val captionEdit = v.findViewById<EditText>(R.id.caption)
         var folder: Uri? = if (image) prefs.imageFolder else prefs.videoFolder
         val defaultLabel = if (image) MediaStoreSaver.DEFAULT_IMAGE_LABEL else MediaStoreSaver.DEFAULT_VIDEO_LABEL
         name.setText(defaultName)
@@ -1229,15 +1416,16 @@ class PlayerActivity : AppCompatActivity() {
         }
         if (range != null) {
             v.findViewById<View>(R.id.rangeBox).visibility = View.VISIBLE
-            removeAudio.visibility = View.VISIBLE
             start.setText(Util.formatTime(range.first))
             end.setText(Util.formatTime(range.second))
         }
+        if (audioOption) removeAudio.visibility = View.VISIBLE
+        if (caption) v.findViewById<View>(R.id.captionLayout).visibility = View.VISIBLE
         lateinit var dialog: AppDialog
         dialog = AppDialog(this)
             .icon(icon)
             .title(title)
-            .apply { if (range != null) message("구간반복(A-B)을 지정해 두면 그 구간이 자동으로 채워집니다.") }
+            .apply { message?.let { message(it) } }
             .content(v)
             .secondary("취소")
             .keepOpenOnPrimary()
@@ -1253,55 +1441,221 @@ class PlayerActivity : AppCompatActivity() {
                     r = s to e
                 }
                 dialog.dismiss()
-                onSave(name.text.toString().ifBlank { defaultName }, folder, r, removeAudio.isChecked)
+                onSave(SaveChoice(name.text.toString().ifBlank { defaultName }, folder, r, removeAudio.isChecked, captionEdit.text.toString()))
             }
             .show()
     }
 
-    private fun captureFrame() {
+    private fun currentFrame(): Bitmap? {
         val texture = playerView.videoSurfaceView as? TextureView
-        val bitmap = texture?.bitmap
-        if (bitmap == null || player.videoSize.width == 0) {
-            showIndicator("캡쳐할 화면이 없습니다", R.drawable.ic_camera)
-            return
-        }
-        val name = baseName("capture")
-        if (prefs.askOnCapture) {
-            val wasPlaying = player.isPlaying
-            player.pause()
-            showSaveDialog("화면 캡쳐", R.drawable.ic_camera, name, image = true) { n, folder, _, _ ->
-                saveBitmap(bitmap, n, folder)
-                if (wasPlaying) player.play()
-            }
-        } else saveBitmap(bitmap, name, prefs.imageFolder)
+        if (player.videoSize.width == 0) return null
+        return texture?.bitmap
     }
 
-    private fun saveBitmap(bitmap: Bitmap, name: String, folder: Uri?) {
+    private fun captureFrame() {
+        val bitmap = currentFrame() ?: run { showIndicator("캡쳐할 화면이 없습니다", R.drawable.ic_camera); return }
+        val wasPlaying = player.isPlaying
+        if (prefs.askOnCapture) player.pause()
+        showSaveDialog("화면 캡쳐", R.drawable.ic_camera, baseName("capture"), image = true) { c ->
+            saveBitmap(bitmap, c.name, c.folder, "캡쳐 저장")
+            if (wasPlaying) player.play()
+        }
+    }
+
+    /** 지금 장면으로 썸네일(가로 1280 JPEG)을 만든다. 글자를 넣을 수 있다. */
+    private fun makeThumbnail() {
+        val frame = currentFrame() ?: run { showIndicator("썸네일로 만들 화면이 없습니다", R.drawable.ic_image); return }
+        val wasPlaying = player.isPlaying
+        player.pause()
+        showSaveDialog(
+            "썸네일 만들기", R.drawable.ic_image, baseName("thumb"), image = true, caption = true,
+            message = "지금 장면을 썸네일 이미지로 저장합니다. 이어붙이기에서 '썸네일'로 골라 동영상 맨 앞에 넣을 수 있어요."
+        ) { c ->
+            lifecycleScope.launch {
+                val result = withContext(Dispatchers.Default) {
+                    runCatching {
+                        val img = Thumbnails.render(frame, c.caption)
+                        MediaStoreSaver.saveImage(this@PlayerActivity, img, c.name, c.folder, jpeg = true).also { img.recycle() }
+                    }
+                }
+                result.onSuccess { showIndicator("썸네일 저장  ·  " + prefs.folderLabel(c.folder, MediaStoreSaver.DEFAULT_IMAGE_LABEL), R.drawable.ic_check, duration = 2500) }
+                    .onFailure { AppDialog.info(this@PlayerActivity, "썸네일을 만들지 못했습니다", it.message ?: "", R.drawable.ic_error) }
+                if (wasPlaying) player.play()
+            }
+        }
+    }
+
+    private fun saveBitmap(bitmap: Bitmap, name: String, folder: Uri?, done: String) {
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching { MediaStoreSaver.saveImage(this@PlayerActivity, bitmap, name, folder) }
             }
             result.onSuccess {
-                showIndicator("캡쳐 저장  ·  " + prefs.folderLabel(folder, MediaStoreSaver.DEFAULT_IMAGE_LABEL), R.drawable.ic_check)
-            }.onFailure { AppDialog.info(this@PlayerActivity, "캡쳐하지 못했습니다", it.message ?: "", R.drawable.ic_error) }
+                showIndicator("$done  ·  " + prefs.folderLabel(folder, MediaStoreSaver.DEFAULT_IMAGE_LABEL), R.drawable.ic_check, duration = 2000)
+            }.onFailure { AppDialog.info(this@PlayerActivity, "저장하지 못했습니다", it.message ?: "", R.drawable.ic_error) }
         }
     }
 
-    private fun showClipDialog() {
-        val uri = currentUri() ?: return
-        val duration = player.duration
-        if (duration <= 0) {
-            AppDialog.info(this, "구간 저장", "길이를 알 수 없는 동영상(실시간 방송 등)은 구간을 저장할 수 없습니다.", R.drawable.ic_cut)
+    // ---------------------------------------------------------------- 구간 편집 (여러 구간 저장 / 삭제 / GIF)
+
+    private fun toggleSectionPanel() {
+        if (sectionPanel.visibility == View.VISIBLE) {
+            sectionPanel.visibility = View.GONE
+        } else {
+            if (player.duration <= 0) {
+                AppDialog.info(this, "구간 편집", "길이를 알 수 없는 동영상(실시간 방송 등)은 구간을 저장할 수 없습니다.", R.drawable.ic_cut)
+                return
+            }
+            sectionPanel.visibility = View.VISIBLE
+            updateSections()
+            setControlsVisible(true)
+        }
+        scheduleHide()
+    }
+
+    private fun updateSections() {
+        sectionBar.sections = sections.toList()
+        sectionBar.pendingStart = if (sectionStart != C.TIME_UNSET) sectionStart else -1
+        sectionInfo.text = when {
+            sectionStart != C.TIME_UNSET -> "시작 ${Util.formatTime(sectionStart)} · 끝낼 곳에서 '끝'을 누르세요"
+            sections.isEmpty() && abActive() -> "구간을 고르지 않으면 구간반복(A-B) ${Util.formatTime(abStart)} ~ ${Util.formatTime(abEnd)}을 씁니다"
+            sections.isEmpty() -> "원하는 곳에서 '시작'과 '끝'을 눌러 구간을 고르세요. 여러 개 고를 수 있어요."
+            else -> "구간 ${sections.size}개 · 합계 ${Util.formatTime(sections.sumOf { it.second - it.first })}"
+        }
+    }
+
+    private fun markSectionStart() {
+        sectionStart = player.currentPosition
+        updateSections()
+        showIndicator("시작  ${Util.formatTime(sectionStart)}", R.drawable.ic_mark_in)
+    }
+
+    private fun markSectionEnd() {
+        val pos = player.currentPosition
+        val start = sectionStart
+        if (start == C.TIME_UNSET) {
+            showIndicator("먼저 '시작'을 누르세요", R.drawable.ic_info)
             return
         }
-        val start = if (abStart != C.TIME_UNSET) abStart else player.currentPosition
-        val end = if (abEnd != C.TIME_UNSET) abEnd else (start + 30_000).coerceAtMost(duration)
+        if (pos <= start + 300) {
+            showIndicator("끝은 시작보다 뒤여야 합니다", R.drawable.ic_info)
+            return
+        }
+        sections += start to pos
+        sectionStart = C.TIME_UNSET
+        mergeSections()
+        updateSections()
+        showIndicator("구간 추가  ${Util.formatTime(start)} ~ ${Util.formatTime(pos)}", R.drawable.ic_mark_out)
+    }
+
+    /** 겹치는 구간은 하나로 합치고 시작 순으로 정렬. */
+    private fun mergeSections() {
+        val sorted = sections.sortedBy { it.first }
+        val merged = mutableListOf<Pair<Long, Long>>()
+        for (r in sorted) {
+            val last = merged.lastOrNull()
+            if (last != null && r.first <= last.second) merged[merged.size - 1] = last.first to maxOf(last.second, r.second)
+            else merged += r
+        }
+        sections.clear()
+        sections.addAll(merged)
+    }
+
+    private fun showSectionList() {
+        if (sections.isEmpty()) {
+            showIndicator("고른 구간이 없습니다", R.drawable.ic_list)
+            return
+        }
+        val items = sections.mapIndexed { i, (s, e) ->
+            AppDialog.Companion.Item("${i + 1}.  ${Util.formatTime(s)} ~ ${Util.formatTime(e)}", "길이 ${Util.formatTime(e - s)}", R.drawable.ic_cut)
+        } + AppDialog.Companion.Item("모두 지우기", null, R.drawable.ic_delete)
+        AppDialog.choice(
+            this, "고른 구간", items, message = "누르면 그 구간으로 이동, 길게 누르면 목록에서 지웁니다.",
+            onLongPick = { which ->
+                if (which < sections.size) {
+                    sections.removeAt(which); updateSections()
+                }
+            }
+        ) { which ->
+            if (which < sections.size) player.seekTo(sections[which].first)
+            else {
+                sections.clear(); sectionStart = C.TIME_UNSET; updateSections()
+            }
+        }
+    }
+
+    /** 작업 대상 구간: 고른 구간들, 없으면 구간반복(A-B). */
+    private fun targetRanges(): List<Pair<Long, Long>>? {
+        if (sections.isNotEmpty()) return sections.toList()
+        if (abActive()) return listOf(abStart to abEnd)
+        showIndicator("먼저 '시작'과 '끝'으로 구간을 고르세요", R.drawable.ic_info)
+        return null
+    }
+
+    private class ExportJob(val name: String, val ranges: List<Pair<Long, Long>>)
+
+    private fun saveSections() {
+        val ranges = targetRanges() ?: return
         player.pause()
-        showSaveDialog("구간을 동영상으로 저장", R.drawable.ic_cut, baseName("clip"), image = false, range = start to end) { name, folder, r, removeAudio ->
-            val (s, e) = r ?: return@showSaveDialog
-            val label = prefs.folderLabel(folder, MediaStoreSaver.DEFAULT_VIDEO_LABEL)
-            val p = AppDialog.progress(this, "구간 저장 중", "${Util.formatTime(s)} ~ ${Util.formatTime(e)}  ·  $label") { exporter.cancel() }
-            exporter.exportClip(uri, s, e.coerceAtMost(duration), removeAudio, name, folder, object : VideoExporter.Callback {
+        val go = { separate: Boolean ->
+            val single = if (ranges.size == 1) ranges[0] else null
+            showSaveDialog(
+                "구간 저장", R.drawable.ic_cut, baseName("clip"), image = false, range = single, audioOption = true,
+                message = if (ranges.size > 1) (if (separate) "구간 ${ranges.size}개를 각각 파일로 저장합니다 (이름 뒤에 _1, _2 …)." else "구간 ${ranges.size}개를 순서대로 이어 한 파일로 저장합니다.")
+                else "재생 속도와 상관없이 원래 속도로 저장됩니다."
+            ) { c ->
+                val rs = c.range?.let { listOf(it) } ?: ranges
+                val jobs = if (separate && rs.size > 1) rs.mapIndexed { i, r -> ExportJob("${c.name}_${i + 1}", listOf(r)) }
+                else listOf(ExportJob(c.name, rs))
+                runExports("구간 저장 중", jobs, c.removeAudio, c.folder)
+            }
+        }
+        if (ranges.size == 1) go(false)
+        else AppDialog.choice(
+            this, "구간 ${ranges.size}개 저장",
+            listOf(
+                AppDialog.Companion.Item("하나로 이어서 저장", "고른 구간들을 차례로 붙여 한 파일로", R.drawable.ic_merge),
+                AppDialog.Companion.Item("구간마다 따로 저장", "구간 수만큼 파일을 만듭니다", R.drawable.ic_cut)
+            )
+        ) { which -> go(which == 1) }
+    }
+
+    private fun deleteSections() {
+        val ranges = targetRanges() ?: return
+        val duration = player.duration
+        val keep = mutableListOf<Pair<Long, Long>>()
+        var cursor = 0L
+        for ((s, e) in ranges.sortedBy { it.first }) {
+            if (s - cursor > 300) keep += cursor to s
+            cursor = maxOf(cursor, e)
+        }
+        if (duration - cursor > 300) keep += cursor to duration
+        if (keep.isEmpty()) {
+            AppDialog.info(this, "구간 삭제", "고른 구간이 동영상 전체라서 남는 부분이 없습니다.", R.drawable.ic_delete)
+            return
+        }
+        player.pause()
+        val removed = ranges.sumOf { it.second - it.first }
+        showSaveDialog(
+            "구간 삭제", R.drawable.ic_delete, baseName("cut"), image = false, audioOption = true,
+            message = "고른 구간 ${ranges.size}개(합계 ${Util.formatTime(removed)})를 뺀 나머지를 새 동영상으로 저장합니다. 원본 파일은 그대로 둡니다."
+        ) { c -> runExports("구간 삭제 중", listOf(ExportJob(c.name, keep)), c.removeAudio, c.folder) }
+    }
+
+    /** 내보내기를 차례로 실행. 끝나면 별도 창 없이 안내만 잠깐 보여준다. */
+    private fun runExports(title: String, jobs: List<ExportJob>, removeAudio: Boolean, folder: Uri?) {
+        val uri = currentUri() ?: return
+        val duration = player.duration
+        val label = prefs.folderLabel(folder, MediaStoreSaver.DEFAULT_VIDEO_LABEL)
+        val p = AppDialog.progress(this, title, "저장 위치: $label") { exporter.cancel() }
+        val notes = mutableSetOf<String>()
+
+        fun run(i: Int) {
+            val job = jobs[i]
+            if (jobs.size > 1) p.dialog.title("$title (${i + 1}/${jobs.size})")
+            p.set(0)
+            val ranges = job.ranges.map { (s, e) -> s to e.coerceAtMost(duration) }
+            exporter.exportRanges(uri, ranges, removeAudio, job.name, folder, object : VideoExporter.Callback {
                 override fun onProgress(percent: Int) = p.set(percent)
 
                 override fun onStatus(message: String) {
@@ -1310,15 +1664,15 @@ class PlayerActivity : AppCompatActivity() {
                 }
 
                 override fun onDone(saved: Uri) {
+                    exporter.resultNote?.let { notes += it }
+                    if (i + 1 < jobs.size) {
+                        run(i + 1)
+                        return
+                    }
                     p.dialog.dismiss()
-                    AppDialog(this@PlayerActivity).icon(R.drawable.ic_check).title("저장했습니다")
-                        .message("$label 에 저장했습니다." + (exporter.resultNote?.let { "\n\n$it" } ?: ""))
-                        .secondary("닫기")
-                        .primary("재생목록에 추가") {
-                            player.addMediaItem(mediaItemOf(saved))
-                            refreshQueue()
-                        }
-                        .show()
+                    val count = if (jobs.size > 1) "${jobs.size}개 " else ""
+                    showIndicator("${count}저장했습니다  ·  $label", R.drawable.ic_check, duration = 2500)
+                    if (notes.isNotEmpty()) Util.toast(this@PlayerActivity, notes.joinToString(" "))
                 }
 
                 override fun onError(message: String) {
@@ -1326,6 +1680,57 @@ class PlayerActivity : AppCompatActivity() {
                     AppDialog.info(this@PlayerActivity, "저장하지 못했습니다", message, R.drawable.ic_error)
                 }
             })
+        }
+        run(0)
+    }
+
+    /** 고른 구간(마지막 것) 또는 구간반복을 GIF 로. 없으면 지금부터 5초. */
+    private fun makeGif() {
+        val uri = currentUri() ?: return
+        val duration = player.duration
+        if (duration <= 0) return
+        var range = sections.lastOrNull() ?: (if (abActive()) abStart to abEnd else null)
+            ?: (player.currentPosition to (player.currentPosition + 5_000).coerceAtMost(duration))
+        var note = ""
+        if (range.second - range.first > GifMaker.MAX_SECONDS * 1000L) {
+            range = range.first to range.first + GifMaker.MAX_SECONDS * 1000L
+            note = "GIF는 최대 ${GifMaker.MAX_SECONDS}초까지 만들 수 있어 앞부분만 사용합니다.\n"
+        }
+        player.pause()
+        AppDialog.choice(
+            this, "GIF 만들기",
+            GifMaker.QUALITIES.map { AppDialog.Companion.Item(it.label) }, checked = 1,
+            message = note + "${Util.formatTime(range.first)} ~ ${Util.formatTime(range.second)} 구간 (소리 없음). 크게 할수록 파일이 커지고 오래 걸립니다."
+        ) { which ->
+            val q = GifMaker.QUALITIES[which]
+            showSaveDialog("GIF 저장", R.drawable.ic_gif, baseName("gif"), image = true, range = range, audioOption = false) { c ->
+                val r = c.range ?: range
+                val (s, e) = r.first to minOf(r.second, r.first + GifMaker.MAX_SECONDS * 1000L, duration)
+                var cancelled = false
+                val p = AppDialog.progress(this, "GIF 만드는 중", "${Util.formatTime(s)} ~ ${Util.formatTime(e)}") { cancelled = true }
+                p.dialog.icon(R.drawable.ic_gif)
+                lifecycleScope.launch {
+                    val result = withContext(Dispatchers.Default) {
+                        runCatching {
+                            val file = GifMaker(this@PlayerActivity).make(uri, s, e, q, { cancelled }) { pct ->
+                                runOnUiThread { p.set(pct) }
+                            }
+                            try {
+                                MediaStoreSaver.saveGifFile(this@PlayerActivity, file, c.name, c.folder)
+                            } finally {
+                                file.delete()
+                            }
+                        }
+                    }
+                    p.dialog.dismiss()
+                    if (cancelled) return@launch
+                    result.onSuccess {
+                        showIndicator("GIF 저장  ·  " + prefs.folderLabel(c.folder, MediaStoreSaver.DEFAULT_IMAGE_LABEL), R.drawable.ic_check, duration = 2500)
+                    }.onFailure {
+                        AppDialog.info(this@PlayerActivity, "GIF를 만들지 못했습니다", it.message ?: it.javaClass.simpleName, R.drawable.ic_error)
+                    }
+                }
+            }
         }
     }
 
