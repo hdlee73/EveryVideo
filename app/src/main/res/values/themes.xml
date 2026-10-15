@@ -13,6 +13,7 @@
         <item name="android:colorBackground">@color/content_bg</item>
         <item name="android:windowBackground">@color/content_bg</item>
         <item name="android:statusBarColor">@color/sidebar</item>
+        <item name="colorSurfaceContainerHigh">@color/surface</item>
         <item name="android:navigationBarColor">@color/content_bg</item>
         <item name="android:windowLightStatusBar">@bool/light_bars</item>
         <item name="android:windowLightNavigationBar">@bool/light_bars</item>
@@ -23,15 +24,15 @@
     <style name="Theme.EveryVideo" parent="Base.EveryVideo" />
 
     <style name="Theme.EveryVideo.Player" parent="Theme.Material3.Dark.NoActionBar">
-        <item name="colorPrimary">#FFBFC3FF</item>
-        <item name="colorOnPrimary">#FF1A2180</item>
-        <item name="colorPrimaryContainer">#FF353FA0</item>
-        <item name="colorOnPrimaryContainer">#FFE1E0FF</item>
-        <item name="colorSecondaryContainer">#FF353FA0</item>
-        <item name="colorOnSecondaryContainer">#FFE1E0FF</item>
-        <item name="colorSurface">#FF1F1F24</item>
-        <item name="colorOnSurface">#FFE6E1E6</item>
-        <item name="colorOnSurfaceVariant">#FFB0ACB6</item>
+        <item name="colorPrimary">#FF8AB8FF</item>
+        <item name="colorOnPrimary">#FF0A2A5E</item>
+        <item name="colorPrimaryContainer">#FF1D3A6B</item>
+        <item name="colorOnPrimaryContainer">#FFDCE8FF</item>
+        <item name="colorSecondaryContainer">#FF1D3A6B</item>
+        <item name="colorOnSecondaryContainer">#FFDCE8FF</item>
+        <item name="colorSurface">#FF1A1C21</item>
+        <item name="colorOnSurface">#FFECEEF2</item>
+        <item name="colorOnSurfaceVariant">#FF9BA3B0</item>
         <item name="android:windowBackground">@android:color/black</item>
         <item name="android:statusBarColor">@android:color/black</item>
         <item name="android:navigationBarColor">@android:color/black</item>

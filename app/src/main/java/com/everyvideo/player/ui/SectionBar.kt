@@ -22,9 +22,9 @@ class SectionBar @JvmOverloads constructor(context: Context, attrs: AttributeSet
 
     val inset = 12 * resources.displayMetrics.density
     private val d = resources.displayMetrics.density
-    private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x99FFB300.toInt() }
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x99FFB020.toInt() }
     private val ab = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x5539C6FF }
-    private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFB300.toInt(); strokeWidth = 2 * d }
+    private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFB020.toInt(); strokeWidth = 2 * d }
 
     override fun onTouchEvent(event: android.view.MotionEvent?) = false
 

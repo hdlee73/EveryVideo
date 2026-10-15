@@ -26,6 +26,11 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.everyvideo.player.R
 import com.everyvideo.player.net.DriveLinks
+import com.everyvideo.player.net.WebMedia
+import com.everyvideo.player.media.Downloads
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.everyvideo.player.record.ScreenRecordActivity
 import com.everyvideo.player.record.ScreenRecordService
 import com.everyvideo.player.ui.pages.BackHandler
@@ -46,7 +51,7 @@ class MainActivity : AppCompatActivity() {
         HOME("홈", R.drawable.ic_home),
         PLAYLISTS("재생목록", R.drawable.ic_playlist),
         BOOKMARKS("즐겨찾기", R.drawable.ic_bookmarks),
-        SERVERS("FTP / SMB 서버", R.drawable.ic_server),
+        SERVERS("네트워크 서버", R.drawable.ic_server),
         CONCAT("동영상 이어붙이기", R.drawable.ic_merge),
         SETTINGS("설정", R.drawable.ic_settings)
     }
@@ -237,14 +242,84 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun showUrlDialog() {
-        AppDialog.input(
-            this, "주소로 열기", "https://…, rtsp://…, 구글 드라이브 공유 링크",
-            ok = "재생", icon = R.drawable.ic_link
-        ) { text ->
-            if (text.isEmpty()) return@input
-            val url = if (DriveLinks.isDriveLink(text)) DriveLinks.streamUrl(text) ?: text else text
-            play(listOf(Uri.parse(url)))
+        val v = LayoutInflater.from(this).inflate(R.layout.dialog_input, null)
+        v.findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.layout).hint =
+            "https://…, rtsp://…, 구글 드라이브 공유 링크, 웹 페이지 주소"
+        val edit = v.findViewById<EditText>(R.id.edit)
+        edit.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
+        fun entered(): String? {
+            val text = edit.text?.toString()?.trim().orEmpty()
+            if (text.isEmpty()) return null
+            return if (DriveLinks.isDriveLink(text)) DriveLinks.streamUrl(text) ?: text else text
         }
+        AppDialog(this)
+            .icon(R.drawable.ic_link)
+            .title("주소로 열기")
+            .message("웹 페이지 주소를 넣으면 페이지 안의 동영상 링크를 찾아 보여줍니다.")
+            .content(v)
+            .tertiary("내려받기") { entered()?.let { openUrl(it, download = true) } }
+            .secondary("취소")
+            .primary("열기") { entered()?.let { openUrl(it, download = false) } }
+            .show()
+        edit.requestFocus()
+        edit.postDelayed({
+            getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+                .showSoftInput(edit, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+        }, 150)
+    }
+
+    /** 주소를 재생하거나 내려받는다. 웹 페이지면 안의 동영상 링크를 먼저 찾는다. */
+    fun openUrl(url: String, download: Boolean) {
+        if (WebMedia.isDirectMedia(url)) {
+            if (download) startDownload(WebMedia.linkOf(url)) else play(listOf(Uri.parse(url)))
+            return
+        }
+        val waiting = AppDialog(this).icon(R.drawable.ic_search).title("동영상 링크 찾는 중")
+            .message(url).cancelable(true).show()
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { WebMedia.find(url) } }
+            waiting.dismiss()
+            val links = result.getOrElse {
+                AppDialog(this@MainActivity).icon(R.drawable.ic_error).title("웹 페이지를 읽지 못했습니다")
+                    .message((it.message ?: it.javaClass.simpleName) + "\n\n주소를 그대로 재생해 볼 수 있습니다.")
+                    .secondary("닫기").primary("그대로 재생") { play(listOf(Uri.parse(url))) }.show()
+                return@launch
+            }
+            if (links.isEmpty()) {
+                AppDialog(this@MainActivity).icon(R.drawable.ic_search).title("동영상 링크가 없습니다")
+                    .message("이 페이지에서 동영상 파일 주소를 찾지 못했습니다. 스트리밍 사이트는 영상을 숨겨 두는 경우가 많아요.\n\n주소를 그대로 재생해 볼까요?")
+                    .secondary("닫기").primary("그대로 재생") { play(listOf(Uri.parse(url))) }.show()
+                return@launch
+            }
+            AppDialog.choice(
+                this@MainActivity, "찾은 동영상 ${links.size}개",
+                links.map {
+                    AppDialog.Companion.Item(
+                        it.name, (if (it.streaming) "스트리밍 · " else "") + (Uri.parse(it.url).host ?: ""),
+                        if (it.streaming) R.drawable.ic_link else R.drawable.ic_movie
+                    )
+                },
+                message = if (download) "내려받을 파일을 고르세요." else "누르면 재생하고, 길게 누르면 내려받습니다.",
+                onLongPick = { i -> startDownload(links[i]) }
+            ) { i ->
+                if (download) startDownload(links[i])
+                else play(links.map { Uri.parse(it.url) }, i)
+            }
+        }
+    }
+
+    private fun startDownload(link: WebMedia.Link) {
+        if (link.streaming) {
+            AppDialog.info(
+                this, "내려받을 수 없는 주소",
+                "m3u8·mpd 같은 스트리밍 주소는 조각난 파일이라 그대로 내려받을 수 없습니다. 재생한 뒤 '구간 저장'으로 원하는 부분을 저장하세요.",
+                R.drawable.ic_download
+            )
+            return
+        }
+        runCatching { Downloads.enqueue(this, link.url, link.name) }
+            .onSuccess { Util.toast(this, "내려받기 시작 · $it") }
+            .onFailure { AppDialog.info(this, "내려받지 못했습니다", it.message ?: it.javaClass.simpleName, R.drawable.ic_error) }
     }
 
     // ---------------------------------------------------------------- 화면 녹화

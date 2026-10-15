@@ -10,6 +10,7 @@ import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 import android.media.AudioManager
+import android.media.audiofx.LoudnessEnhancer
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -31,6 +32,7 @@ import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
@@ -66,6 +68,7 @@ import com.everyvideo.player.data.Prefs
 import com.everyvideo.player.data.Recent
 import com.everyvideo.player.media.GifMaker
 import com.everyvideo.player.media.MediaStoreSaver
+import com.everyvideo.player.media.Subtitles
 import com.everyvideo.player.media.Thumbnails
 import com.everyvideo.player.media.VideoExporter
 import com.everyvideo.player.net.MediaSources
@@ -128,6 +131,8 @@ class PlayerActivity : AppCompatActivity() {
     private lateinit var adjustPanel: View
     private lateinit var brightnessSlider: Slider
     private lateinit var volumeSlider: Slider
+    private lateinit var contrastSlider: Slider
+    private lateinit var saturationSlider: Slider
     private lateinit var queuePanel: View
     private lateinit var queueList: RecyclerView
     private lateinit var btnSpeedReset: TextView
@@ -149,6 +154,19 @@ class PlayerActivity : AppCompatActivity() {
     private var orientationChosen = false
     private var volumeAccumulator = 0f
     private var zoom = 1f
+    /** 볼륨 100% 를 넘겨 키운 정도 (0~100). 기기 최대 볼륨일 때만 쓴다. */
+    private var volumeBoost = 0
+    private var loudness: LoudnessEnhancer? = null
+    /** 밝기 200 단계 중 기기 최대를 넘긴 부분 (0~1). */
+    private var videoBoost = 0f
+    /** 불러온 자막 파일과 싱크 조절 값. 동영상이 바뀌면 지운다. */
+    private var subtitle: Subtitles.Sub? = null
+    private var subtitleOffset = 0L
+    private var lastItemId: String? = null
+
+    private val subtitlePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) loadSubtitle(uri)
+    }
     /** 구간 편집: 저장하거나 지울 구간들 (시작 순으로 정렬). */
     private val sections = mutableListOf<Pair<Long, Long>>()
     private var sectionStart = C.TIME_UNSET
@@ -198,6 +216,7 @@ class PlayerActivity : AppCompatActivity() {
         handler.removeCallbacksAndMessages(null)
         exporter.cancel()
         previewPlayer?.release()
+        loudness?.release()
         player.release()
         super.onDestroy()
     }
@@ -248,6 +267,8 @@ class PlayerActivity : AppCompatActivity() {
         adjustPanel = findViewById(R.id.adjustPanel)
         brightnessSlider = findViewById(R.id.brightnessSlider)
         volumeSlider = findViewById(R.id.volumeSlider)
+        contrastSlider = findViewById(R.id.contrastSlider)
+        saturationSlider = findViewById(R.id.saturationSlider)
         queuePanel = findViewById(R.id.queuePanel)
         queueList = findViewById(R.id.queueList)
         queueInfo = findViewById(R.id.queueInfo)
@@ -284,7 +305,7 @@ class PlayerActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnAdjust).setOnClickListener { toggleAdjustPanel() }
         findViewById<View>(R.id.btnCapture).setOnClickListener { captureFrame() }
         findViewById<View>(R.id.btnClip).setOnClickListener { toggleSectionPanel() }
-        findViewById<View>(R.id.btnThumb).setOnClickListener { makeThumbnail() }
+        findViewById<View>(R.id.btnThumb).setOnClickListener { chooseThumbnail() }
         findViewById<View>(R.id.sectionClose).setOnClickListener { toggleSectionPanel() }
         findViewById<View>(R.id.secIn).setOnClickListener { markSectionStart() }
         findViewById<View>(R.id.secOut).setOnClickListener { markSectionEnd() }
@@ -355,6 +376,7 @@ class PlayerActivity : AppCompatActivity() {
         setupGestures()
         setupAdjustPanel()
         prefs.brightnessLevel?.let { applyBrightness(it) }
+        applyVideoColor()
         setupQueuePanel()
 
         root.setOnGenericMotionListener { _, e -> handleGenericMotion(e) }
@@ -379,13 +401,21 @@ class PlayerActivity : AppCompatActivity() {
             .build()
         playerView.player = player
         player.addListener(object : Player.Listener {
+            override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                loudness?.release()
+                loudness = null
+                applyVolumeBoost()
+            }
+
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 btnPlay.setImageResource(if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
                 if (isPlaying) scheduleHide() else handler.removeCallbacks(hideControls)
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                onItemChanged(mediaItem)
+                // 자막만 바꿔 끼운 경우(같은 동영상)는 구간·반복 설정을 그대로 둔다
+                val sameItem = reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED && mediaItem?.mediaId == lastItemId
+                if (!sameItem) onItemChanged(mediaItem)
                 if (!queueDragging) refreshQueue()
             }
 
@@ -481,6 +511,9 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun onItemChanged(item: MediaItem?) {
         item ?: return
+        lastItemId = item.mediaId
+        subtitle = null
+        subtitleOffset = 0L
         titleText.text = item.mediaMetadata.title
         clearAb()
         sections.clear()
@@ -499,7 +532,7 @@ class PlayerActivity : AppCompatActivity() {
                 updateMarkers()
             }
         }
-        if (pendingStartMs < 0) {
+        if (pendingStartMs < 0 && prefs.autoResume) {
             lifecycleScope.launch {
                 val recent = db.recents().get(key) ?: return@launch
                 if (recent.positionMs > 5_000 && (recent.durationMs <= 0 || recent.positionMs < recent.durationMs - 5_000)) {
@@ -851,25 +884,43 @@ class PlayerActivity : AppCompatActivity() {
             if (l > 100) boost = (l - 100) / 100f
         }
         window.attributes = lp
-        applyVideoBoost(boost)
+        videoBoost = boost
+        applyVideoColor()
         prefs.brightnessLevel = level
     }
 
-    /** 영상 화면(TextureView)에 색 보정을 걸어 기기 최대 밝기보다 더 밝아 보이게 한다. boost 0~1. */
-    private fun applyVideoBoost(boost: Float) {
+    /**
+     * 영상 화면(TextureView)에 색 보정을 건다.
+     * 밝기 boost(0~1, 기기 최대 밝기보다 더 밝게), 대비·채도(-100~100) 를 한 색 행렬로 합친다.
+     */
+    private fun applyVideoColor() {
         val texture = playerView.videoSurfaceView as? TextureView ?: return
-        if (boost <= 0f) {
+        val contrast = prefs.contrast
+        val saturation = prefs.saturation
+        if (videoBoost <= 0f && contrast == 0 && saturation == 0) {
             texture.setLayerPaint(null)
             return
         }
-        val gain = 1f + boost * 1.2f          // 밝은 부분까지 함께 키움
-        val lift = boost * 28f                // 어두운 부분을 끌어올림
-        val m = ColorMatrix(floatArrayOf(
-            gain, 0f, 0f, 0f, lift,
-            0f, gain, 0f, 0f, lift,
-            0f, 0f, gain, 0f, lift,
+        val m = ColorMatrix()
+        m.setSaturation(1f + saturation / 100f)                // 0 = 흑백, 2 = 두 배 진하게
+        val c = 1f + contrast / 100f * (if (contrast > 0) 1f else 0.7f)
+        val t = 128f * (1f - c)
+        m.postConcat(ColorMatrix(floatArrayOf(
+            c, 0f, 0f, 0f, t,
+            0f, c, 0f, 0f, t,
+            0f, 0f, c, 0f, t,
             0f, 0f, 0f, 1f, 0f
-        ))
+        )))
+        if (videoBoost > 0f) {
+            val gain = 1f + videoBoost * 1.2f          // 밝은 부분까지 함께 키움
+            val lift = videoBoost * 28f                // 어두운 부분을 끌어올림
+            m.postConcat(ColorMatrix(floatArrayOf(
+                gain, 0f, 0f, 0f, lift,
+                0f, gain, 0f, 0f, lift,
+                0f, 0f, gain, 0f, lift,
+                0f, 0f, 0f, 1f, 0f
+            )))
+        }
         texture.setLayerPaint(Paint().apply { colorFilter = ColorMatrixColorFilter(m) })
     }
 
@@ -894,10 +945,41 @@ class PlayerActivity : AppCompatActivity() {
         syncAdjustPanel()
     }
 
+    /** 0~200. 100 을 넘는 부분은 기기 최대 볼륨에서 소리를 더 키운 것. */
     private fun volumePercent(): Int {
         val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-        return audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) * 100 / max
+        val cur = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        if (cur < max && volumeBoost > 0) {
+            volumeBoost = 0
+            applyVolumeBoost()
+        }
+        return cur * 100 / max + volumeBoost
     }
+
+    private fun setVolumePercent(percent: Int) {
+        val p = percent.coerceIn(0, 200)
+        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (minOf(p, 100) / 100f * max).toInt(), 0)
+        volumeBoost = (p - 100).coerceAtLeast(0)
+        applyVolumeBoost()
+    }
+
+    /** 기기 최대 볼륨을 넘는 부분은 LoudnessEnhancer 로 키운다 (+100% ≈ +10dB). */
+    private fun applyVolumeBoost() {
+        if (volumeBoost <= 0) {
+            loudness?.setEnabled(false)
+            return
+        }
+        val session = player.audioSessionId
+        if (session == C.AUDIO_SESSION_ID_UNSET) return
+        val le = loudness ?: runCatching { LoudnessEnhancer(session) }.getOrNull()?.also { loudness = it } ?: return
+        runCatching {
+            le.setTargetGain(volumeBoost * 10)
+            le.setEnabled(true)
+        }
+    }
+
+    private fun volumeLabel(pct: Int) = if (pct > 100) "볼륨 $pct% · 소리 키움" else "볼륨 $pct%"
 
     private fun changeVolume(delta: Float) {
         val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
@@ -905,11 +987,17 @@ class PlayerActivity : AppCompatActivity() {
         val steps = volumeAccumulator.toInt()
         if (steps != 0) {
             volumeAccumulator -= steps
-            val v = (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) + steps).coerceIn(0, max)
-            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, v, 0)
+            val cur = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+            if (steps > 0 && cur >= max || steps < 0 && volumeBoost > 0) {
+                // 최대에서 더 올리거나, 키운 상태에서 내리면 100% 위쪽을 조절
+                volumeBoost = (volumeBoost + steps * 100 / max).coerceIn(0, 100)
+                applyVolumeBoost()
+            } else {
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (cur + steps).coerceIn(0, max), 0)
+            }
         }
         val pct = volumePercent()
-        showIndicator("볼륨 $pct%", R.drawable.ic_volume, pct)
+        showIndicator(volumeLabel(pct), R.drawable.ic_volume, pct / 2)
         syncAdjustPanel()
     }
 
@@ -921,11 +1009,18 @@ class PlayerActivity : AppCompatActivity() {
                     // Ctrl + 휠: 마우스 위치를 중심으로 확대/축소
                     setZoom(zoom * (if (v > 0) 1.15f else 1 / 1.15f), e.x, e.y)
                 } else {
-                    audioManager.adjustStreamVolume(
-                        AudioManager.STREAM_MUSIC, if (v > 0) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER, 0
-                    )
+                    val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                    val cur = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                    if (v > 0 && cur >= max || v < 0 && volumeBoost > 0) {
+                        volumeBoost = (volumeBoost + if (v > 0) 10 else -10).coerceIn(0, 100)
+                        applyVolumeBoost()
+                    } else {
+                        audioManager.adjustStreamVolume(
+                            AudioManager.STREAM_MUSIC, if (v > 0) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER, 0
+                        )
+                    }
                     val pct = volumePercent()
-                    showIndicator("볼륨 $pct%", R.drawable.ic_volume, pct)
+                    showIndicator(volumeLabel(pct), R.drawable.ic_volume, pct / 2)
                     syncAdjustPanel()
                 }
                 return true
@@ -962,11 +1057,24 @@ class PlayerActivity : AppCompatActivity() {
             }
         }
         volumeSlider.addOnChangeListener { _, value, fromUser ->
-            if (fromUser) {
-                val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (value / 100f * max).toInt(), 0)
-            }
-            findViewById<TextView>(R.id.volumeValue).text = "${value.toInt()}%"
+            if (fromUser) setVolumePercent(value.toInt())
+            findViewById<TextView>(R.id.volumeValue).text = if (value > 100) "${value.toInt()}% ▲" else "${value.toInt()}%"
+        }
+        fun signed(v: Int) = if (v > 0) "+$v" else "$v"
+        contrastSlider.addOnChangeListener { _, value, fromUser ->
+            if (fromUser) { prefs.contrast = value.toInt(); applyVideoColor() }
+            findViewById<TextView>(R.id.contrastValue).text = "대비 ${signed(value.toInt())}"
+        }
+        saturationSlider.addOnChangeListener { _, value, fromUser ->
+            if (fromUser) { prefs.saturation = value.toInt(); applyVideoColor() }
+            findViewById<TextView>(R.id.saturationValue).text = "채도 ${signed(value.toInt())}"
+        }
+        findViewById<View>(R.id.colorReset).setOnClickListener {
+            prefs.contrast = 0
+            prefs.saturation = 0
+            applyVideoColor()
+            syncAdjustPanel()
+            showIndicator("대비 · 채도 원래대로", R.drawable.ic_contrast)
         }
         findViewById<View>(R.id.brightnessAuto).setOnClickListener {
             applyBrightness(null)
@@ -977,7 +1085,9 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun syncAdjustPanel() {
         brightnessSlider.value = currentBrightnessLevel().coerceIn(-50, MAX_BRIGHTNESS).toFloat()
-        volumeSlider.value = volumePercent().coerceIn(0, 100).toFloat()
+        volumeSlider.value = volumePercent().coerceIn(0, 200).toFloat()
+        contrastSlider.value = prefs.contrast.coerceIn(-100, 100).toFloat()
+        saturationSlider.value = prefs.saturation.coerceIn(-100, 100).toFloat()
     }
 
     private fun toggleAdjustPanel() {
@@ -1316,9 +1426,17 @@ class PlayerActivity : AppCompatActivity() {
             listOf(
                 AppDialog.Companion.Item("음성 트랙", icon = R.drawable.ic_volume),
                 AppDialog.Companion.Item("자막", icon = R.drawable.ic_tracks),
-                AppDialog.Companion.Item("영상 트랙", icon = R.drawable.ic_movie)
+                AppDialog.Companion.Item("영상 트랙", icon = R.drawable.ic_movie),
+                AppDialog.Companion.Item("자막 파일 불러오기", "SRT · SMI · VTT · ASS", R.drawable.ic_subtitle),
+                AppDialog.Companion.Item(
+                    "자막 싱크 조절",
+                    if (subtitle != null) "지금 ${offsetText(subtitleOffset)}" else "불러온 자막 파일에 적용",
+                    R.drawable.ic_sync
+                )
             )
         ) { which ->
+            if (which == 3) { runCatching { subtitlePicker.launch(arrayOf("*/*")) }; return@choice }
+            if (which == 4) { showSubtitleSync(); return@choice }
             val type = when (which) {
                 0 -> C.TRACK_TYPE_AUDIO
                 1 -> C.TRACK_TYPE_TEXT
@@ -1359,6 +1477,83 @@ class PlayerActivity : AppCompatActivity() {
         }
         AppDialog.choice(this, title, options.map { AppDialog.Companion.Item(it.first) }, checked) { which ->
             options[which].second()
+        }
+    }
+
+    // ---------------------------------------------------------------- 자막 파일
+
+    private fun offsetText(ms: Long) = when {
+        ms == 0L -> "0초 (원래대로)"
+        ms > 0 -> "+%.1f초 (자막 늦게)".format(ms / 1000f)
+        else -> "%.1f초 (자막 빠르게)".format(ms / 1000f)
+    }
+
+    private fun loadSubtitle(uri: Uri) {
+        val name = Util.displayName(this, uri)
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { Subtitles.load(this@PlayerActivity, uri, name) } }
+            result.onSuccess { sub ->
+                subtitle = sub
+                subtitleOffset = 0L
+                applySubtitle()
+                showIndicator("자막: $name", R.drawable.ic_subtitle, duration = 2000)
+            }.onFailure {
+                AppDialog.info(this@PlayerActivity, "자막을 불러오지 못했습니다", it.message ?: it.javaClass.simpleName, R.drawable.ic_error)
+            }
+        }
+    }
+
+    /** 지금 동영상에 자막 파일을 붙여 다시 연다. 위치와 재생 상태는 그대로. */
+    private fun applySubtitle() {
+        val sub = subtitle ?: return
+        val item = player.currentMediaItem ?: return
+        val index = player.currentMediaItemIndex
+        val position = player.currentPosition
+        val file = runCatching { Subtitles.write(this, sub, subtitleOffset) }.getOrElse {
+            Util.toast(this, "자막 파일을 만들지 못했습니다"); return
+        }
+        val config = MediaItem.SubtitleConfiguration.Builder(file)
+            .setMimeType(Subtitles.mime(sub.format))
+            .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+            .setLabel(sub.name)
+            .build()
+        player.replaceMediaItem(index, item.buildUpon().setSubtitleConfigurations(listOf(config)).build())
+        player.seekTo(index, position)
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .build()
+    }
+
+    private fun showSubtitleSync() {
+        val sub = subtitle
+        if (sub == null || !Subtitles.canShift(sub)) {
+            AppDialog(this).icon(R.drawable.ic_sync).title("자막 싱크 조절")
+                .message(
+                    if (sub == null) "싱크는 '자막 파일 불러오기'로 연 자막(SRT, SMI, VTT, ASS)에서 조절할 수 있습니다. 동영상 파일 안에 들어 있는 자막은 시간을 옮길 수 없어요."
+                    else "이 형식(TTML)은 싱크 조절을 지원하지 않습니다."
+                )
+                .secondary("닫기")
+                .primary("자막 파일 불러오기") { runCatching { subtitlePicker.launch(arrayOf("*/*")) } }
+                .show()
+            return
+        }
+        val steps = listOf(-500L, -100L, 100L, 500L)
+        AppDialog.choice(
+            this, "자막 싱크 조절",
+            listOf(
+                AppDialog.Companion.Item("0.5초 빠르게", "자막이 소리보다 늦게 나올 때"),
+                AppDialog.Companion.Item("0.1초 빠르게"),
+                AppDialog.Companion.Item("0.1초 늦게"),
+                AppDialog.Companion.Item("0.5초 늦게", "자막이 소리보다 먼저 나올 때"),
+                AppDialog.Companion.Item("원래대로")
+            ),
+            message = "지금: ${offsetText(subtitleOffset)}"
+        ) { which ->
+            subtitleOffset = if (which == 4) 0L else subtitleOffset + steps[which]
+            applySubtitle()
+            showIndicator("자막 싱크 ${offsetText(subtitleOffset)}", R.drawable.ic_sync)
+            showSubtitleSync()
         }
     }
 
@@ -1459,6 +1654,49 @@ class PlayerActivity : AppCompatActivity() {
         showSaveDialog("화면 캡쳐", R.drawable.ic_camera, baseName("capture"), image = true) { c ->
             saveBitmap(bitmap, c.name, c.folder, "캡쳐 저장")
             if (wasPlaying) player.play()
+        }
+    }
+
+    private fun chooseThumbnail() {
+        AppDialog.choice(
+            this, "썸네일 만들기",
+            listOf(
+                AppDialog.Companion.Item("지금 장면", "이 장면에 제목을 얹은 한 장", R.drawable.ic_image),
+                AppDialog.Companion.Item("장면 모음 4×4", "영상 전체에서 고르게 16장면", R.drawable.ic_grid),
+                AppDialog.Companion.Item("장면 모음 3×3", "영상 전체에서 고르게 9장면", R.drawable.ic_grid)
+            )
+        ) { which ->
+            when (which) {
+                0 -> makeThumbnail()
+                1 -> makeContactSheet(4, 4)
+                else -> makeContactSheet(3, 3)
+            }
+        }
+    }
+
+    /** 장면 모음 이미지를 만든다. 제목 글자를 맨 위에 넣을 수 있다. */
+    private fun makeContactSheet(cols: Int, rows: Int) {
+        val uri = currentUri() ?: return
+        showSaveDialog(
+            "장면 모음 만들기", R.drawable.ic_grid, baseName("scenes"), image = true, caption = true,
+            message = "영상 전체에서 ${cols * rows}장면을 고르게 뽑아 한 장의 이미지로 저장합니다. 맨 위에 넣을 제목을 적을 수 있어요."
+        ) { c ->
+            var cancelled = false
+            val heading = c.caption.ifBlank { currentTitle().substringBeforeLast('.') }
+            val p = AppDialog.progress(this, "장면 모음 만드는 중", null) { cancelled = true }
+            lifecycleScope.launch {
+                val result = withContext(Dispatchers.Default) {
+                    runCatching {
+                        val img = Thumbnails.renderSheet(this@PlayerActivity, uri, cols, rows, heading,
+                            isCancelled = { cancelled }) { pct -> runOnUiThread { p.set(pct) } }
+                        MediaStoreSaver.saveImage(this@PlayerActivity, img, c.name, c.folder, jpeg = true).also { img.recycle() }
+                    }
+                }
+                p.dialog.dismiss()
+                if (cancelled) return@launch
+                result.onSuccess { showIndicator("장면 모음 저장  ·  " + prefs.folderLabel(c.folder, MediaStoreSaver.DEFAULT_IMAGE_LABEL), R.drawable.ic_check, duration = 2500) }
+                    .onFailure { AppDialog.info(this@PlayerActivity, "장면 모음을 만들지 못했습니다", it.message ?: "", R.drawable.ic_error) }
+            }
         }
     }
 

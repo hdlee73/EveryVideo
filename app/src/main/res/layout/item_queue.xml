@@ -26,7 +26,7 @@
         android:importantForAccessibility="no"
         android:src="@drawable/ic_play"
         android:visibility="gone"
-        app:tint="#FFBFC3FF" />
+        app:tint="@color/player_accent" />
 
     <TextView
         android:id="@+id/name"

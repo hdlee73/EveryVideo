@@ -25,7 +25,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="SMB (PC 공유 폴더)" />
+                android:text="SMB" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/typeFtp"
@@ -34,6 +34,14 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="FTP" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/typeDav"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="WebDAV" />
         </com.google.android.material.button.MaterialButtonToggleGroup>
 
         <com.google.android.material.textfield.TextInputLayout
@@ -55,6 +63,7 @@
             android:orientation="horizontal">
 
             <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/hostLayout"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="2.3"

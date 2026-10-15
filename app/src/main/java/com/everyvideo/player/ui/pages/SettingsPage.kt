@@ -33,6 +33,10 @@ class SettingsPage : ListPage() {
                 "저장할 때 이름과 위치 묻기 (캡쳐·구간·GIF·썸네일)", if (prefs.askOnCapture) "켜짐 · 저장 전에 파일 이름을 정합니다" else "꺼짐 · 바로 저장합니다",
                 R.drawable.ic_edit, showMore = false
             ) { prefs.askOnCapture = !prefs.askOnCapture; render() },
+            Row(
+                "이어서 재생", if (prefs.autoResume) "켜짐 · 다시 열면 마지막으로 보던 곳부터" else "꺼짐 · 항상 처음부터",
+                R.drawable.ic_play, showMore = false
+            ) { prefs.autoResume = !prefs.autoResume; render() },
             Row("저장 위치를 기본값으로", "사진/EveryVideo, 동영상/EveryVideo", R.drawable.ic_folder, showMore = false) {
                 AppDialog.confirm(requireContext(), "기본 위치로 되돌리기", "저장 위치를 기본 폴더로 되돌릴까요?", "되돌리기", R.drawable.ic_folder) {
                     prefs.imageFolder = null; prefs.videoFolder = null; render()

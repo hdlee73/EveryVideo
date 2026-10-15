@@ -15,8 +15,9 @@ object RemoteUris {
     fun isVideoName(name: String): Boolean =
         name.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
 
-    /** 서버 설정으로 smb:// 또는 ftp:// 주소를 만든다. path 는 공유 폴더 기준 상대 경로. */
+    /** 서버 설정으로 smb://, ftp://, dav(s):// 주소를 만든다. path 는 공유 폴더 기준 상대 경로. */
     fun build(server: RemoteServer, path: String): Uri {
+        if (server.type == "webdav") return buildDav(server, path)
         val auth = buildString {
             if (server.user.isNotBlank()) {
                 append(Uri.encode(server.user))
@@ -30,6 +31,24 @@ object RemoteUris {
         if (server.type == "smb" && server.share.isNotBlank()) b.appendPath(server.share)
         path.split('/').filter { it.isNotEmpty() }.forEach { b.appendPath(it) }
         if (server.type == "smb" && server.domain.isNotBlank()) b.appendQueryParameter("domain", server.domain)
+        return b.build()
+    }
+
+    private fun buildDav(server: RemoteServer, path: String): Uri {
+        val base = WebDav.baseOf(server)
+        val port = if (server.port > 0) server.port else base.port
+        val auth = buildString {
+            if (server.user.isNotBlank()) {
+                append(Uri.encode(server.user))
+                if (server.password.isNotEmpty()) append(':').append(Uri.encode(server.password))
+                append('@')
+            }
+            append(base.host ?: "")
+            if (port > 0) append(':').append(port)
+        }
+        val b = Uri.Builder().scheme(if (base.scheme == "https") "davs" else "dav").encodedAuthority(auth)
+        base.pathSegments.forEach { b.appendPath(it) }
+        path.split('/').filter { it.isNotEmpty() }.forEach { b.appendPath(it) }
         return b.build()
     }
 
@@ -48,7 +67,7 @@ object RemoteUris {
 
     /** 즐겨찾기/최근 기록 키: 비밀번호 등 사용자 정보와 쿼리 중 도메인을 뺀 주소. */
     fun keyOf(uri: Uri): String {
-        if (uri.scheme == "smb" || uri.scheme == "ftp") {
+        if (uri.scheme == "smb" || uri.scheme == "ftp" || WebDav.isDav(uri)) {
             val port = if (uri.port > 0) ":${uri.port}" else ""
             return "${uri.scheme}://${uri.host}$port${uri.encodedPath ?: ""}"
         }

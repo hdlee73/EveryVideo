@@ -13,7 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** FTP / SMB 서버의 폴더를 탐색한다. */
+/** FTP / SMB / WebDAV 서버의 폴더를 탐색한다. */
 class BrowsePage : ListPage(), BackHandler {
     companion object {
         fun of(serverId: Long) = BrowsePage().apply { arguments = Bundle().apply { putLong("id", serverId) } }
@@ -51,7 +51,7 @@ class BrowsePage : ListPage(), BackHandler {
 
     private fun load(newPath: String) {
         val s = server ?: return
-        setTitle(s.name, "${s.type}://${s.host}/${s.share}$newPath")
+        setTitle(s.name, if (s.type == "webdav") "${s.host.trimEnd('/')}$newPath" else "${s.type}://${s.host}/${s.share}$newPath")
         setLoading(true)
         viewLifecycleOwner.lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) { runCatching { RemoteBrowser.list(s, newPath) } }

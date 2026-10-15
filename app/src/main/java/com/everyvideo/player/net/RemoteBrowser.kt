@@ -9,7 +9,11 @@ data class RemoteEntry(val name: String, val isDir: Boolean, val size: Long, val
 object RemoteBrowser {
     /** path 는 서버(SMB 는 공유 폴더) 기준 "/a/b" 형태. 블로킹 호출이므로 IO 스레드에서 부른다. */
     fun list(server: RemoteServer, path: String): List<RemoteEntry> {
-        val entries = if (server.type == "smb") listSmb(server, path) else listFtp(server, path)
+        val entries = when (server.type) {
+            "smb" -> listSmb(server, path)
+            "webdav" -> WebDav.list(server, path)
+            else -> listFtp(server, path)
+        }
         return entries
             .filter { !it.name.startsWith(".") && (it.isDir || RemoteUris.isVideoName(it.name)) }
             .sortedWith(compareBy<RemoteEntry>({ !it.isDir }, { it.name.lowercase() }))

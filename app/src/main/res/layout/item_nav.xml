@@ -2,7 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="44dp"
+    android:layout_height="46dp"
     android:layout_marginTop="2dp"
     android:background="@drawable/bg_nav_item"
     android:gravity="center_vertical"
@@ -22,7 +22,7 @@
         android:layout_height="20dp"
         android:layout_marginStart="9dp"
         android:importantForAccessibility="no"
-        app:tint="@color/text_primary" />
+        app:tint="@color/nav_content" />
 
     <TextView
         android:id="@+id/label"
@@ -32,7 +32,7 @@
         android:layout_weight="1"
         android:ellipsize="end"
         android:maxLines="1"
-        android:textColor="@color/text_primary"
+        android:textColor="@color/nav_content"
         android:textSize="15sp" />
 
     <ImageView

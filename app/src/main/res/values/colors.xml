@@ -1,28 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="brand">#FF4F5BD5</color>
+    <!-- 브랜드: 산뜻한 하늘빛 파랑 -->
+    <color name="brand">#FF2D7FF9</color>
     <color name="brand_dark">#FF1A237E</color>
-    <color name="accent">#FFFFB300</color>
+    <color name="accent">#FFFFB020</color>
     <color name="overlay">#99000000</color>
     <color name="ic_launcher_background">#FF1A237E</color>
 
     <!-- 앱 화면 (밝은 테마) -->
-    <color name="primary">#FF4F5BD5</color>
+    <color name="primary">#FF2D7FF9</color>
     <color name="on_primary">#FFFFFFFF</color>
-    <color name="primary_container">#FFE1E0FF</color>
-    <color name="on_primary_container">#FF0E1566</color>
-    <color name="sidebar">#FFF7EEEC</color>
-    <color name="sidebar_selected">#FFEDE2DF</color>
-    <color name="content_bg">#FFF4F4F5</color>
+    <color name="primary_container">#FFE3EDFF</color>
+    <color name="on_primary_container">#FF0B3A8C</color>
+    <color name="sidebar">#FFF7F8FA</color>
+    <color name="sidebar_selected">#FFE3EDFF</color>
+    <color name="content_bg">#FFF2F4F7</color>
     <color name="surface">#FFFFFFFF</color>
-    <color name="surface_high">#FFF3F1F4</color>
-    <color name="text_primary">#FF1C1B1F</color>
-    <color name="text_secondary">#FF5F5D66</color>
-    <color name="divider">#1F000000</color>
-    <color name="danger">#FFD93838</color>
+    <color name="surface_high">#FFEEF1F5</color>
+    <color name="card_stroke">#FFE6E9EE</color>
+    <color name="text_primary">#FF16181D</color>
+    <color name="text_secondary">#FF667085</color>
+    <color name="divider">#14101828</color>
+    <color name="danger">#FFE5484D</color>
 
     <!-- 재생 화면 (항상 어두움) -->
-    <color name="player_panel">#E6181820</color>
-    <color name="player_card">#F0202029</color>
-    <color name="player_row_selected">#33FFFFFF</color>
+    <color name="player_panel">#EB111317</color>
+    <color name="player_card">#F21B1E24</color>
+    <color name="player_row_selected">#332D7FF9</color>
+    <color name="player_accent">#FF8AB8FF</color>
 </resources>

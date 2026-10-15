@@ -16,15 +16,16 @@ class ServersPage : ListPage() {
     private val dao by lazy { (requireActivity().application as App).db.servers() }
 
     override fun setup() {
-        setTitle("FTP / SMB 서버", "같은 네트워크의 PC 공유 폴더나 FTP 서버의 동영상을 바로 재생합니다")
+        setTitle("네트워크 서버", "PC 공유 폴더(SMB), FTP, WebDAV(NAS·Nextcloud)의 동영상을 바로 재생합니다")
         addAction(R.drawable.ic_add, "서버 추가", primary = true) { edit(null) }
-        setEmpty(R.drawable.ic_server, "등록된 서버가 없습니다", "'서버 추가'를 눌러 PC 공유 폴더(SMB)나 FTP 서버를 등록하세요.", "서버 추가") { edit(null) }
+        setEmpty(R.drawable.ic_server, "등록된 서버가 없습니다", "'서버 추가'를 눌러 PC 공유 폴더(SMB), FTP, WebDAV 서버를 등록하세요.", "서버 추가") { edit(null) }
         viewLifecycleOwner.lifecycleScope.launch {
             dao.observe().collect { list ->
                 setRows(list.map { s ->
                     Row(
                         title = s.name,
-                        subtitle = "${s.type.uppercase()} · ${s.host}${if (s.port > 0) ":" + s.port else ""}/${s.share}${s.path}",
+                        subtitle = if (s.type == "webdav") "WEBDAV · ${s.host.trimEnd('/')}${s.path}"
+                            else "${s.type.uppercase()} · ${s.host}${if (s.port > 0) ":" + s.port else ""}/${s.share}${s.path}",
                         icon = R.drawable.ic_server,
                         onMore = { menu(s) },
                         onClick = { main.showFragment(BrowsePage.of(s.id)) }
@@ -54,14 +55,16 @@ class ServersPage : ListPage() {
         fun text(id: Int) = v.findViewById<EditText>(id)
         val shareLayout = v.findViewById<View>(R.id.shareLayout)
         val domainLayout = v.findViewById<View>(R.id.domainLayout)
+        val hostLayout = v.findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.hostLayout)
         fun sync() {
             val smb = type.checkedButtonId == R.id.typeSmb
             shareLayout.visibility = if (smb) View.VISIBLE else View.GONE
             domainLayout.visibility = if (smb) View.VISIBLE else View.GONE
+            hostLayout.hint = if (type.checkedButtonId == R.id.typeDav) "주소 (예: https://nas.local:5006/dav)" else "주소 (예: 192.168.0.10)"
         }
         type.addOnButtonCheckedListener { _, _, _ -> sync() }
         existing?.let {
-            type.check(if (it.type == "ftp") R.id.typeFtp else R.id.typeSmb)
+            type.check(when (it.type) { "ftp" -> R.id.typeFtp; "webdav" -> R.id.typeDav; else -> R.id.typeSmb })
             text(R.id.name).setText(it.name); text(R.id.host).setText(it.host)
             if (it.port > 0) text(R.id.port).setText(it.port.toString())
             text(R.id.share).setText(it.share); text(R.id.path).setText(it.path)
@@ -77,8 +80,11 @@ class ServersPage : ListPage() {
             .secondary("취소")
             .keepOpenOnPrimary()
             .primary("저장") {
-                val host = text(R.id.host).text.toString().trim().removePrefix("smb://").removePrefix("ftp://").trimEnd('/')
-                val t = if (type.checkedButtonId == R.id.typeFtp) "ftp" else "smb"
+                val t = when (type.checkedButtonId) { R.id.typeFtp -> "ftp"; R.id.typeDav -> "webdav"; else -> "smb" }
+                val raw = text(R.id.host).text.toString().trim()
+                val host = if (t == "webdav") raw.replace(Regex("^(dav|webdav)://", RegexOption.IGNORE_CASE), "http://")
+                    .replace(Regex("^davs://", RegexOption.IGNORE_CASE), "https://").trimEnd('/')
+                else raw.removePrefix("smb://").removePrefix("ftp://").trimEnd('/')
                 when {
                     host.isEmpty() -> Util.toast(requireContext(), "주소를 입력하세요")
                     t == "smb" && text(R.id.share).text.isBlank() -> Util.toast(requireContext(), "SMB 는 공유 폴더 이름이 필요합니다")

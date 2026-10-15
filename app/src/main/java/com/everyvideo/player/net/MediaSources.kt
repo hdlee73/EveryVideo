@@ -27,6 +27,16 @@ class RoutingDataSource(private val context: Context) : DataSource {
         val ds: DataSource = when (dataSpec.uri.scheme?.lowercase()) {
             "ftp" -> FtpDataSource()
             "smb" -> SmbDataSource()
+            "dav", "davs" -> {
+                val auth = WebDav.authHeader(dataSpec.uri)
+                DefaultHttpDataSource.Factory()
+                    .setUserAgent("EveryVideo/1.0 (Android)")
+                    .setAllowCrossProtocolRedirects(true)
+                    .setConnectTimeoutMs(15_000)
+                    .setReadTimeoutMs(30_000)
+                    .apply { if (auth != null) setDefaultRequestProperties(mapOf("Authorization" to auth)) }
+                    .createDataSource()
+            }
             else -> DefaultDataSource(
                 context,
                 DefaultHttpDataSource.Factory()
@@ -39,7 +49,8 @@ class RoutingDataSource(private val context: Context) : DataSource {
         }
         listeners.forEach { ds.addTransferListener(it) }
         current = ds
-        return ds.open(dataSpec)
+        val spec = if (WebDav.isDav(dataSpec.uri)) dataSpec.buildUpon().setUri(WebDav.httpUri(dataSpec.uri)).build() else dataSpec
+        return ds.open(spec)
     }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int = current!!.read(buffer, offset, length)

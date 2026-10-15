@@ -99,4 +99,6 @@ dependencies {
 
     implementation("commons-net:commons-net:3.11.1")
     implementation("com.hierynomus:smbj:0.13.0")
+    // WebDAV 폴더 목록 (PROPFIND)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }

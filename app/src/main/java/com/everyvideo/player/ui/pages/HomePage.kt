@@ -1,29 +1,71 @@
 package com.everyvideo.player.ui.pages
 
-import android.os.Bundle
-import android.view.View
-import androidx.fragment.app.Fragment
-import android.widget.ImageView
-import android.widget.TextView
+import android.net.Uri
+import android.text.format.DateUtils
+import androidx.lifecycle.lifecycleScope
+import com.everyvideo.player.App
 import com.everyvideo.player.R
-import com.everyvideo.player.ui.MainActivity
+import com.everyvideo.player.data.Recent
+import com.everyvideo.player.ui.AppDialog
+import com.everyvideo.player.ui.Util
 import com.everyvideo.player.ui.VideoPicker
-import com.google.android.material.button.MaterialButton
+import kotlinx.coroutines.launch
 
-/** 시작 화면: 가운데 안내만 보여준다. */
-class HomePage : Fragment(R.layout.view_empty) {
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        view.findViewById<ImageView>(R.id.emptyIcon).setImageResource(R.drawable.ic_movie)
-        view.findViewById<TextView>(R.id.emptyTitle).text = "동영상 열기"
-        view.findViewById<TextView>(R.id.emptyMessage).text =
-            "메뉴의 '파일 열기'에서 내 파일이나 Google Drive의 동영상을 고르세요.\n재생목록과 즐겨찾기도 메뉴에서 볼 수 있습니다."
-        view.findViewById<MaterialButton>(R.id.emptyAction).apply {
-            visibility = View.VISIBLE
-            text = "내 파일에서 열기"
-            setIconResource(R.drawable.ic_phone)
-            setOnClickListener {
-                val main = requireActivity() as MainActivity
-                main.pickVideos(VideoPicker.Source.MY_FILES) { main.play(it) }
+/** 시작 화면: 최근에 본 동영상을 이어 보기 쉽게 보여준다. */
+class HomePage : ListPage() {
+    private val dao by lazy { (requireActivity().application as App).db.recents() }
+
+    override fun setup() {
+        setTitle("최근 재생", "보던 곳부터 이어서 봅니다. 길게 누르면 처음부터 보거나 기록에서 지울 수 있어요")
+        addAction(R.drawable.ic_link, "주소") { main.showUrlDialog() }
+        addAction(R.drawable.ic_open, "파일 열기", primary = true) {
+            main.chooseSourceAndPick("동영상 열기") { main.play(it) }
+        }
+        setEmpty(
+            R.drawable.ic_movie, "동영상 열기",
+            "내 파일이나 Google Drive 의 동영상을 고르세요.\n본 동영상은 여기에 모여 이어서 볼 수 있습니다.",
+            "내 파일에서 열기"
+        ) { main.pickVideos(VideoPicker.Source.MY_FILES) { main.play(it) } }
+        viewLifecycleOwner.lifecycleScope.launch {
+            dao.observe().collect { list -> setRows(list.map(::rowOf)) }
+        }
+    }
+
+    private fun rowOf(r: Recent): Row {
+        val done = r.durationMs > 0 && r.positionMs >= r.durationMs - 5_000
+        val pct = if (r.durationMs > 0) (r.positionMs * 100 / r.durationMs).toInt().coerceIn(0, 100) else 0
+        val where = when {
+            done -> "다 봄"
+            r.durationMs > 0 -> "${Util.formatTime(r.positionMs)} / ${Util.formatTime(r.durationMs)}"
+            else -> Util.formatTime(r.positionMs)
+        }
+        val ago = DateUtils.getRelativeTimeSpanString(r.lastPlayed, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS)
+        return Row(
+            title = r.title.ifBlank { Util.displayName(requireContext(), Uri.parse(r.videoUri)) },
+            subtitle = "$where · $ago",
+            icon = if (done) R.drawable.ic_check else R.drawable.ic_play,
+            badge = if (!done && pct in 1..99) "$pct%" else null,
+            onMore = { menu(r) },
+            onClick = { main.play(listOf(Uri.parse(r.videoUri)), startMs = if (done) 0L else -1L) }
+        )
+    }
+
+    private fun menu(r: Recent) {
+        AppDialog.choice(
+            requireContext(), r.title,
+            listOf(
+                AppDialog.Companion.Item("처음부터 재생", icon = R.drawable.ic_replay10),
+                AppDialog.Companion.Item("기록에서 지우기", icon = R.drawable.ic_close),
+                AppDialog.Companion.Item("최근 기록 모두 지우기", icon = R.drawable.ic_delete)
+            )
+        ) { which ->
+            when (which) {
+                0 -> main.play(listOf(Uri.parse(r.videoUri)), startMs = 0L)
+                1 -> lifecycleScope.launch { dao.delete(r.videoKey) }
+                else -> AppDialog.confirm(
+                    requireContext(), "최근 기록 지우기", "최근 재생 목록을 모두 지울까요? 동영상 파일은 그대로 있습니다.",
+                    "모두 지우기", R.drawable.ic_delete, danger = true
+                ) { lifecycleScope.launch { dao.clear() } }
             }
         }
     }

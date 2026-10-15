@@ -27,6 +27,20 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("askOnCapture", true)
         set(v) = sp.edit().putBoolean("askOnCapture", v).apply()
 
+    /** 화면 대비, 채도 (-100~100, 0 이 원본). */
+    var contrast: Int
+        get() = sp.getInt("contrast", 0)
+        set(v) = sp.edit().putInt("contrast", v).apply()
+
+    var saturation: Int
+        get() = sp.getInt("saturation", 0)
+        set(v) = sp.edit().putInt("saturation", v).apply()
+
+    /** 다시 열 때 마지막으로 보던 곳부터 재생할지. */
+    var autoResume: Boolean
+        get() = sp.getBoolean("autoResume", true)
+        set(v) = sp.edit().putBoolean("autoResume", v).apply()
+
     fun folderLabel(folder: Uri?, defaultLabel: String): String {
         folder ?: return defaultLabel
         val doc = runCatching { DocumentFile.fromTreeUri(app, folder) }.getOrNull()

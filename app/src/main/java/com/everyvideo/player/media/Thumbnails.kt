@@ -10,7 +10,9 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.Shader
+import android.graphics.RectF
 import android.graphics.Typeface
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.text.Layout
@@ -84,4 +86,87 @@ object Thumbnails {
             .setAlignment(Layout.Alignment.ALIGN_NORMAL)
             .setLineSpacing(0f, 1.05f)
             .build()
+
+    /**
+     * 장면 모음: 영상 전체에서 고르게 cols×rows 장면을 뽑아 바둑판으로 놓는다.
+     * 맨 위에 제목, 각 장면 오른쪽 아래에 시각을 쓴다. 백그라운드 스레드에서 부른다.
+     */
+    fun renderSheet(
+        context: Context, uri: Uri, cols: Int, rows: Int, title: String,
+        isCancelled: () -> Boolean = { false }, onProgress: (Int) -> Unit = {}
+    ): Bitmap {
+        val r = MediaMetadataRetriever()
+        try {
+            when (uri.scheme) {
+                "content", "file", "android.resource" -> r.setDataSource(context, uri)
+                "http", "https" -> r.setDataSource(uri.toString(), HashMap())
+                else -> throw IllegalArgumentException("FTP·SMB·WebDAV 서버의 동영상은 장면 모음을 만들 수 없습니다. 기기에 저장된 동영상에서 만들어 주세요.")
+            }
+            val duration = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            if (duration <= 0) throw IllegalStateException("동영상 길이를 알 수 없습니다")
+            val vw = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 16
+            val vh = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 9
+            val rot = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+            val (sw, sh) = if (rot == 90 || rot == 270) vh to vw else vw to vh
+
+            val tileW = if (cols >= 5) 320 else 400
+            val tileH = (tileW * sh / sw.toFloat()).toInt().coerceIn(tileW / 3, tileW * 2)
+            val gap = 10
+            val margin = 28
+            val header = if (title.isBlank()) 0 else 96
+            val w = margin * 2 + cols * tileW + (cols - 1) * gap
+            val h = margin * 2 + header + rows * tileH + (rows - 1) * gap
+            val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(out)
+            canvas.drawColor(0xFF111318.toInt())
+
+            if (header > 0) {
+                val tp = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.WHITE
+                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                    textSize = 40f
+                }
+                val line = android.text.TextUtils.ellipsize(title.trim(), tp, (w - margin * 2).toFloat(), android.text.TextUtils.TruncateAt.END).toString()
+                canvas.drawText(line, margin.toFloat(), margin + 44f, tp)
+                val sub = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF9AA3B2.toInt(); textSize = 22f }
+                canvas.drawText("길이 ${time(duration)} · ${sw}×${sh} · 장면 ${cols * rows}개", margin.toFloat(), margin + 80f, sub)
+            }
+
+            val tilePaint = Paint(Paint.FILTER_BITMAP_FLAG)
+            val badge = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xB3000000.toInt() }
+            val badgeText = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = 20f; typeface = Typeface.MONOSPACE }
+            val n = cols * rows
+            for (i in 0 until n) {
+                if (isCancelled()) throw java.util.concurrent.CancellationException()
+                val at = duration * (2 * i + 1) / (2 * n)
+                val frame = (if (android.os.Build.VERSION.SDK_INT >= 27)
+                    r.getScaledFrameAtTime(at * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, tileW, tileH)
+                else r.getFrameAtTime(at * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC))
+                val x = margin + (i % cols) * (tileW + gap)
+                val y = margin + header + (i / cols) * (tileH + gap)
+                val dst = Rect(x, y, x + tileW, y + tileH)
+                if (frame != null) {
+                    canvas.drawBitmap(frame, null, dst, tilePaint)
+                    frame.recycle()
+                } else {
+                    canvas.drawRect(dst, Paint().apply { color = 0xFF22252C.toInt() })
+                }
+                val label = time(at)
+                val tw = badgeText.measureText(label)
+                val bx = dst.right - tw - 16f
+                val by = dst.bottom - 34f
+                canvas.drawRoundRect(RectF(bx, by, dst.right - 6f, dst.bottom - 6f), 8f, 8f, badge)
+                canvas.drawText(label, bx + 5f, dst.bottom - 13f, badgeText)
+                onProgress((i + 1) * 100 / n)
+            }
+            return out
+        } finally {
+            runCatching { r.release() }
+        }
+    }
+
+    private fun time(ms: Long): String {
+        val t = ms / 1000
+        return if (t >= 3600) "%d:%02d:%02d".format(t / 3600, t / 60 % 60, t % 60) else "%02d:%02d".format(t / 60, t % 60)
+    }
 }
