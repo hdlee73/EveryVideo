@@ -2,13 +2,13 @@
 # 에뮬레이터에서 시험 동영상을 열어 세로(작업 화면)·가로 화면을 찍고, 앱이 죽지 않았는지 본다.
 set -u
 PKG=com.everyvideo.player
-DIR=/sdcard/Android/data/$PKG/files
+DIR=/sdcard/Download
 OUT=ui-shots
 mkdir -p "$OUT"
 ffmpeg -hide_banner -loglevel error -y -f lavfi -i testsrc=d=40:s=1280x720:r=30 -f lavfi -i sine=d=40 \
   -c:v libx264 -pix_fmt yuv420p -g 30 -c:a aac -shortest test.mp4
 adb install -r dist/*.apk
-adb shell mkdir -p "$DIR"
+adb shell pm grant $PKG android.permission.READ_EXTERNAL_STORAGE
 adb push test.mp4 "$DIR/test.mp4"
 adb shell settings put system accelerometer_rotation 0
 adb shell settings put system user_rotation 0
