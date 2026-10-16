@@ -78,8 +78,12 @@ class FtpDataSource : BaseDataSource(true) {
         if (bytesRemaining == 0L) return C.RESULT_END_OF_INPUT
         val toRead = if (bytesRemaining == C.LENGTH_UNSET.toLong()) length
         else minOf(length.toLong(), bytesRemaining).toInt()
+        val stream = input ?: throw DataSourceException(
+            IOException("FTP 스트림이 닫혀 있습니다"),
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
+        )
         val n = try {
-            input!!.read(buffer, offset, toRead)
+            stream.read(buffer, offset, toRead)
         } catch (e: IOException) {
             throw DataSourceException(e, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)
         }
@@ -92,8 +96,18 @@ class FtpDataSource : BaseDataSource(true) {
     override fun getUri(): Uri? = uri
 
     override fun close() {
-        runCatching { client?.abort() }
+        // 데이터 연결을 먼저 닫고 control 연결의 pending 명령을 끝내야
+        // 다음 seek에서 421/426 에러 없이 재사용된다.
         runCatching { input?.close() }
+        try {
+            client?.let {
+                if (it.isConnected) {
+                    // retrieveFileStream() 뒤에는 completePendingCommand()가 필요하다.
+                    runCatching { it.completePendingCommand() }
+                }
+            }
+        } catch (_: Exception) {
+        }
         client?.let { Ftp.close(it) }
         input = null
         client = null

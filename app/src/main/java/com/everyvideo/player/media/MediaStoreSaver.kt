@@ -80,7 +80,9 @@ object MediaStoreSaver {
         val t = if (jpeg) create(context, folder, cleanName(name, "jpg"), "image/jpeg", true)
         else create(context, folder, cleanName(name, "png"), "image/png", true)
         try {
-            context.contentResolver.openOutputStream(t.uri)!!.use {
+            val out = context.contentResolver.openOutputStream(t.uri)
+                ?: throw IOException("파일을 열 수 없습니다 (저장 공간·권한 확인)")
+            out.use {
                 if (jpeg) bitmap.compress(Bitmap.CompressFormat.JPEG, 92, it) else bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
             }
             t.finish(context)
@@ -95,7 +97,9 @@ object MediaStoreSaver {
     fun saveGifFile(context: Context, file: File, name: String, folder: Uri?): Uri {
         val t = create(context, folder, cleanName(name, "gif"), "image/gif", true)
         try {
-            context.contentResolver.openOutputStream(t.uri)!!.use { out -> file.inputStream().use { it.copyTo(out) } }
+            val out = context.contentResolver.openOutputStream(t.uri)
+                ?: throw IOException("파일을 열 수 없습니다 (저장 공간·권한 확인)")
+            out.use { outStream -> file.inputStream().use { it.copyTo(outStream) } }
             t.finish(context)
         } catch (e: Exception) {
             t.discard(context)
@@ -107,7 +111,9 @@ object MediaStoreSaver {
     fun saveVideoFile(context: Context, file: File, name: String, folder: Uri? = Prefs(context).videoFolder): Uri {
         val t = create(context, folder, cleanName(name, "mp4"), "video/mp4", false)
         try {
-            context.contentResolver.openOutputStream(t.uri)!!.use { out -> file.inputStream().use { it.copyTo(out) } }
+            val out = context.contentResolver.openOutputStream(t.uri)
+                ?: throw IOException("파일을 열 수 없습니다 (저장 공간·권한 확인)")
+            out.use { outStream -> file.inputStream().use { it.copyTo(outStream) } }
             t.finish(context)
         } catch (e: Exception) {
             t.discard(context)

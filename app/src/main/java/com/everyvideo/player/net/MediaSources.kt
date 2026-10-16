@@ -24,6 +24,13 @@ class RoutingDataSource(private val context: Context) : DataSource {
     }
 
     override fun open(dataSpec: DataSpec): Long {
+        // ExoPlayer가 재시도/탐색할 때 open()이 다시 불리면 이전 DataSource를 닫는다.
+        try {
+            current?.close()
+        } catch (_: Exception) {
+        } finally {
+            current = null
+        }
         val ds: DataSource = when (dataSpec.uri.scheme?.lowercase()) {
             "ftp" -> FtpDataSource()
             "smb" -> SmbDataSource()
@@ -53,7 +60,10 @@ class RoutingDataSource(private val context: Context) : DataSource {
         return ds.open(spec)
     }
 
-    override fun read(buffer: ByteArray, offset: Int, length: Int): Int = current!!.read(buffer, offset, length)
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        val c = current ?: throw java.io.IOException("DataSource가 열려 있지 않습니다")
+        return c.read(buffer, offset, length)
+    }
 
     override fun getUri(): Uri? = current?.uri
 

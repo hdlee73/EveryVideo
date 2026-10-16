@@ -31,10 +31,11 @@ object Smb {
         )
     }
 
-    class Target(val session: Session, val share: DiskShare, val path: String) {
+    class Target(val connection: com.hierynomus.smbj.connection.Connection, val session: Session, val share: DiskShare, val path: String) {
         fun close() {
             runCatching { share.close() }
             runCatching { session.close() }
+            runCatching { connection.close() }
         }
     }
 
@@ -44,12 +45,22 @@ object Smb {
         if (segments.isEmpty()) throw IOException("SMB 주소에 공유 폴더 이름이 없습니다")
         val cred = RemoteUris.credentials(uri)
         val connection = client.connect(uri.host, if (uri.port > 0) uri.port else 445)
-        val auth = if (cred.user.isBlank()) AuthenticationContext.anonymous()
-        else AuthenticationContext(cred.user, cred.password.toCharArray(), cred.domain.ifBlank { null })
-        val session = connection.authenticate(auth)
-        val share = session.connectShare(segments[0]) as? DiskShare
-            ?: run { session.close(); throw IOException("디스크 공유가 아닙니다: ${segments[0]}") }
-        return Target(session, share, segments.drop(1).joinToString("\\"))
+        try {
+            val auth = if (cred.user.isBlank()) AuthenticationContext.anonymous()
+            else AuthenticationContext(cred.user, cred.password.toCharArray(), cred.domain.ifBlank { null })
+            val session = connection.authenticate(auth)
+            try {
+                val share = session.connectShare(segments[0]) as? DiskShare
+                    ?: run { session.close(); throw IOException("디스크 공유가 아닙니다: ${segments[0]}") }
+                return Target(connection, session, share, segments.drop(1).joinToString("\\"))
+            } catch (e: Exception) {
+                runCatching { session.close() }
+                throw e
+            }
+        } catch (e: Exception) {
+            runCatching { connection.close() }
+            throw e
+        }
     }
 }
 
@@ -62,7 +73,9 @@ class SmbDataSource : BaseDataSource(true) {
     private var bytesRemaining = 0L
     private var opened = false
 
-    private val chunk = ByteArray(1024 * 1024)
+    // 탐색할 때마다 1MB 버퍼를 새로 만들지 않도록 DataSource당 한 번만 만든다.
+    // (기존처럼 open()마다 만들면 탐색이 잦을 때 GC 압박이 커진다)
+    private val chunk = ByteArray(256 * 1024)
     private var chunkStart = 0L
     private var chunkLen = 0
 

@@ -26,7 +26,9 @@ object Downloads {
             req.setDestinationInExternalFilesDir(context, Environment.DIRECTORY_MOVIES, name)
             "Android/data/${context.packageName}/files/Movies/$name"
         }
-        context.getSystemService(DownloadManager::class.java).enqueue(req)
+        val dm = context.getSystemService(DownloadManager::class.java)
+            ?: throw IllegalStateException("다운로드 관리자를 사용할 수 없습니다 (비활성화됨)")
+        dm.enqueue(req)
         return where
     }
 }
