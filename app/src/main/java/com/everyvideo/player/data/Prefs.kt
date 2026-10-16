@@ -41,6 +41,16 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("autoResume", true)
         set(v) = sp.edit().putBoolean("autoResume", v).apply()
 
+    /** 첫 화면(홈)에 최근 재생 목록을 보일지. 기본은 숨김. */
+    var showRecentOnHome: Boolean
+        get() = sp.getBoolean("showRecentOnHome", false)
+        set(v) = sp.edit().putBoolean("showRecentOnHome", v).apply()
+
+    /** Google Drive 에서 고를 때 처음 열 위치 (내 드라이브). 한 번 고르면 기억한다. */
+    var driveStartUri: Uri?
+        get() = sp.getString("driveStartUri", null)?.let(Uri::parse)
+        set(v) = sp.edit().putString("driveStartUri", v?.toString()).apply()
+
     fun folderLabel(folder: Uri?, defaultLabel: String): String {
         folder ?: return defaultLabel
         val doc = runCatching { DocumentFile.fromTreeUri(app, folder) }.getOrNull()

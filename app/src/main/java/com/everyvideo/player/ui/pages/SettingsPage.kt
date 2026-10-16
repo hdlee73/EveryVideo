@@ -37,6 +37,10 @@ class SettingsPage : ListPage() {
                 "이어서 재생", if (prefs.autoResume) "켜짐 · 다시 열면 마지막으로 보던 곳부터" else "꺼짐 · 항상 처음부터",
                 R.drawable.ic_play, showMore = false
             ) { prefs.autoResume = !prefs.autoResume; render() },
+            Row(
+                "첫 화면에 최근 재생 보이기", if (prefs.showRecentOnHome) "켜짐 · 홈에 최근에 본 동영상 목록을 보여줍니다" else "꺼짐 · 홈에 재생 기록을 보이지 않습니다",
+                R.drawable.ic_home, showMore = false
+            ) { prefs.showRecentOnHome = !prefs.showRecentOnHome; render() },
             Row("저장 위치를 기본값으로", "사진/EveryVideo, 동영상/EveryVideo", R.drawable.ic_folder, showMore = false) {
                 AppDialog.confirm(requireContext(), "기본 위치로 되돌리기", "저장 위치를 기본 폴더로 되돌릴까요?", "되돌리기", R.drawable.ic_folder) {
                     prefs.imageFolder = null; prefs.videoFolder = null; render()

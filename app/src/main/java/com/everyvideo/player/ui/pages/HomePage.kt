@@ -5,27 +5,34 @@ import android.text.format.DateUtils
 import androidx.lifecycle.lifecycleScope
 import com.everyvideo.player.App
 import com.everyvideo.player.R
+import com.everyvideo.player.data.Prefs
 import com.everyvideo.player.data.Recent
 import com.everyvideo.player.ui.AppDialog
 import com.everyvideo.player.ui.Util
 import com.everyvideo.player.ui.VideoPicker
 import kotlinx.coroutines.launch
 
-/** 시작 화면: 최근에 본 동영상을 이어 보기 쉽게 보여준다. */
+/** 시작 화면: 동영상 열기. 설정에서 켜면 최근에 본 동영상도 보여준다. */
 class HomePage : ListPage() {
     private val dao by lazy { (requireActivity().application as App).db.recents() }
 
     override fun setup() {
-        setTitle("최근 재생", "보던 곳부터 이어서 봅니다. 길게 누르면 처음부터 보거나 기록에서 지울 수 있어요")
+        val showRecent = Prefs(requireContext()).showRecentOnHome
+        if (showRecent) setTitle("최근 재생", "보던 곳부터 이어서 봅니다. 길게 누르면 처음부터 보거나 기록에서 지울 수 있어요")
+        else setTitle("동영상 열기")
         addAction(R.drawable.ic_link, "주소") { main.showUrlDialog() }
         addAction(R.drawable.ic_open, "파일 열기", primary = true) {
             main.chooseSourceAndPick("동영상 열기") { main.play(it) }
         }
         setEmpty(
             R.drawable.ic_movie, "동영상 열기",
-            "내 파일이나 Google Drive 의 동영상을 고르세요.\n본 동영상은 여기에 모여 이어서 볼 수 있습니다.",
+            "휴대폰의 다운로드 폴더나 Google Drive 의 동영상을 고르세요.",
             "내 파일에서 열기"
         ) { main.pickVideos(VideoPicker.Source.MY_FILES) { main.play(it) } }
+        if (!showRecent) {
+            setRows(emptyList())
+            return
+        }
         viewLifecycleOwner.lifecycleScope.launch {
             dao.observe().collect { list -> setRows(list.map(::rowOf)) }
         }
