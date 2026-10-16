@@ -14,4 +14,5 @@
     <color name="text_secondary">#FF9BA3B0</color>
     <color name="divider">#1FFFFFFF</color>
     <color name="danger">#FFFF8A80</color>
+    <color name="section_row">#FF3A2E14</color>
 </resources>

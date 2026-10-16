@@ -1,11 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- 세로 화면(전체화면이 아닐 때)은 위에 동영상, 아래에 밝은 작업 패널(필름 타임라인 · 재생 조작 · 구간·캡쳐)을 둔다.
+     전체화면이나 가로 화면은 동영상만 꽉 채우고 조작 막대를 위에 겹친다. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:id="@+id/root"
+    android:id="@+id/screen"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@android:color/black"
-    android:keepScreenOn="true">
+    android:keepScreenOn="true"
+    android:orientation="vertical">
+
+<FrameLayout
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="0dp"
+    android:layout_weight="1"
+    android:background="@android:color/black">
 
     <androidx.media3.ui.PlayerView
         android:id="@+id/playerView"
@@ -273,8 +283,17 @@
 
                 <FrameLayout
                     android:layout_width="0dp"
-                    android:layout_height="48dp"
+                    android:layout_height="56dp"
                     android:layout_weight="1">
+
+                    <!-- 필름 타임라인: 장면 그림을 깔고 그 위에서 누르거나 끈다 -->
+                    <com.everyvideo.player.ui.FilmStripView
+                        android:id="@+id/filmStrip"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_marginTop="4dp"
+                        android:layout_marginBottom="4dp"
+                        android:importantForAccessibility="no" />
 
                     <androidx.media3.ui.DefaultTimeBar
                         android:id="@+id/timeBar"
@@ -282,14 +301,15 @@
                         android:layout_height="match_parent"
                         app:ad_marker_color="@color/accent"
                         app:ad_marker_width="4dp"
-                        app:bar_height="5dp"
+                        app:bar_gravity="bottom"
+                        app:bar_height="4dp"
                         app:played_ad_marker_color="@color/accent"
                         app:played_color="@color/brand"
                         app:scrubber_color="@color/brand"
                         app:scrubber_disabled_size="0dp"
                         app:scrubber_dragged_size="24dp"
                         app:scrubber_enabled_size="16dp"
-                        app:touch_target_height="48dp" />
+                        app:touch_target_height="56dp" />
 
                     <com.everyvideo.player.ui.SectionBar
                         android:id="@+id/sectionBar"
@@ -757,3 +777,165 @@
         android:src="@drawable/ic_lock"
         android:visibility="gone" />
 </FrameLayout>
+
+    <ScrollView
+        android:id="@+id/workSheet"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="@color/content_bg"
+        android:fillViewport="true"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <!-- 재생 조작 막대가 여기로 옮겨진다 -->
+            <LinearLayout
+                android:id="@+id/workControls"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_work_card"
+                android:orientation="vertical"
+                android:paddingTop="6dp"
+                android:paddingBottom="4dp" />
+
+            <LinearLayout
+                android:id="@+id/workSectionCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_work_card"
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="저장할 구간"
+                    android:textColor="@color/text_primary"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/workSectionInfo"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12.5sp" />
+
+                <LinearLayout
+                    android:id="@+id/workSections"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="vertical" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/workIn"
+                        style="@style/WorkTool"
+                        android:layout_marginEnd="4dp"
+                        android:drawableStart="@drawable/ic_mark_in"
+                        android:text="구간 시작" />
+
+                    <TextView
+                        android:id="@+id/workOut"
+                        style="@style/WorkTool"
+                        android:layout_marginStart="4dp"
+                        android:drawableStart="@drawable/ic_mark_out"
+                        android:text="구간 끝" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/workCapture"
+                        style="@style/WorkTool"
+                        android:layout_marginEnd="4dp"
+                        android:drawableStart="@drawable/ic_camera"
+                        android:text="화면 캡쳐" />
+
+                    <TextView
+                        android:id="@+id/workGif"
+                        style="@style/WorkTool"
+                        android:layout_marginStart="4dp"
+                        android:drawableStart="@drawable/ic_gif"
+                        android:text="GIF" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/workThumb"
+                        style="@style/WorkTool"
+                        android:layout_marginEnd="4dp"
+                        android:drawableStart="@drawable/ic_grid"
+                        android:text="장면 모음" />
+
+                    <TextView
+                        android:id="@+id/workDelete"
+                        style="@style/WorkTool"
+                        android:layout_marginStart="4dp"
+                        android:drawableStart="@drawable/ic_delete"
+                        android:text="구간 지우기" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/workSave"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/bg_tool_primary"
+                    android:drawableStart="@drawable/ic_save"
+                    android:drawablePadding="8dp"
+                    android:drawableTint="@android:color/white"
+                    android:gravity="center"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:text="구간 저장"
+                    android:textColor="@android:color/white"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/workQueue"
+                    style="@style/WorkTool"
+                    android:layout_marginEnd="4dp"
+                    android:drawableStart="@drawable/ic_queue"
+                    android:text="재생목록" />
+
+                <TextView
+                    android:id="@+id/workBookmarks"
+                    style="@style/WorkTool"
+                    android:layout_marginStart="4dp"
+                    android:drawableStart="@drawable/ic_bookmarks"
+                    android:text="즐겨찾기" />
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

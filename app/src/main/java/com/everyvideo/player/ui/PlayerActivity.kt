@@ -142,6 +142,19 @@ class PlayerActivity : AppCompatActivity() {
     private lateinit var queueInfo: TextView
     private val queueAdapter = QueueAdapter()
 
+    // 작업 화면 (세로 · 전체화면 아님): 위에 동영상, 아래에 밝은 작업 패널
+    private lateinit var screen: android.widget.LinearLayout
+    private lateinit var bottomBar: android.widget.LinearLayout
+    private lateinit var workSheet: android.widget.ScrollView
+    private lateinit var workControls: android.widget.LinearLayout
+    private lateinit var workSectionCard: View
+    private lateinit var workSections: android.widget.LinearLayout
+    private lateinit var workSectionInfo: TextView
+    private lateinit var filmStrip: FilmStripView
+    private var workMode = false
+    private var filmJob: Job? = null
+    private var filmFor: String? = null
+
     private var fullscreen = true
     private var locked = false
     private var scrubbing = false
@@ -186,6 +199,8 @@ class PlayerActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_player)
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        // 세로로 열면 작업 화면(동영상 + 아래 작업 패널), 가로로 열면 전체화면
+        fullscreen = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         exporter = VideoExporter(this)
         bindViews()
@@ -228,12 +243,18 @@ class PlayerActivity : AppCompatActivity() {
 
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        applyLayoutMode()
         if (isInPictureInPictureMode) {
             setControlsVisible(false)
             preview.visibility = View.INVISIBLE
             queuePanel.visibility = View.GONE
             adjustPanel.visibility = View.GONE
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyLayoutMode()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -276,6 +297,23 @@ class PlayerActivity : AppCompatActivity() {
         sectionPanel = findViewById(R.id.sectionPanel)
         sectionInfo = findViewById(R.id.sectionInfo)
         sectionBar = findViewById(R.id.sectionBar)
+        screen = findViewById(R.id.screen)
+        bottomBar = findViewById(R.id.bottomBar)
+        workSheet = findViewById(R.id.workSheet)
+        workControls = findViewById(R.id.workControls)
+        workSectionCard = findViewById(R.id.workSectionCard)
+        workSections = findViewById(R.id.workSections)
+        workSectionInfo = findViewById(R.id.workSectionInfo)
+        filmStrip = findViewById(R.id.filmStrip)
+        findViewById<View>(R.id.workIn).setOnClickListener { markSectionStart() }
+        findViewById<View>(R.id.workOut).setOnClickListener { markSectionEnd() }
+        findViewById<View>(R.id.workCapture).setOnClickListener { captureFrame() }
+        findViewById<View>(R.id.workGif).setOnClickListener { makeGif() }
+        findViewById<View>(R.id.workThumb).setOnClickListener { chooseThumbnail() }
+        findViewById<View>(R.id.workDelete).setOnClickListener { deleteSections() }
+        findViewById<View>(R.id.workSave).setOnClickListener { saveSections() }
+        findViewById<View>(R.id.workQueue).setOnClickListener { toggleQueue() }
+        findViewById<View>(R.id.workBookmarks).setOnClickListener { showBookmarks() }
 
         findViewById<View>(R.id.btnBack).setOnClickListener { finish() }
         btnPlay.setOnClickListener { togglePlay() }
@@ -319,6 +357,7 @@ class PlayerActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnPip).setOnClickListener { enterPip() }
         btnFullscreen.setOnClickListener {
             fullscreen = !fullscreen
+            orientationChosen = true
             applyFullscreen()
             if (fullscreen && player.videoSize.width > player.videoSize.height) {
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
@@ -424,6 +463,7 @@ class PlayerActivity : AppCompatActivity() {
             }
 
             override fun onVideoSizeChanged(videoSize: VideoSize) {
+                if (workMode) applyLayoutMode()
                 if (!orientationChosen && fullscreen && videoSize.width > 0 && videoSize.height > 0) {
                     orientationChosen = true
                     requestedOrientation = if (videoSize.width >= videoSize.height)
@@ -512,6 +552,11 @@ class PlayerActivity : AppCompatActivity() {
     private fun onItemChanged(item: MediaItem?) {
         item ?: return
         lastItemId = item.mediaId
+        if (filmFor != item.mediaId) {
+            filmJob?.cancel()
+            filmFor = null
+            filmStrip.frames = emptyArray()
+        }
         subtitle = null
         subtitleOffset = 0L
         titleText.text = item.mediaMetadata.title
@@ -574,6 +619,7 @@ class PlayerActivity : AppCompatActivity() {
             timeBar.setDuration(duration)
             durationText.text = Util.formatTime(duration)
             sectionBar.duration = duration
+            loadFilmStrip(duration)
         }
     }
 
@@ -648,15 +694,136 @@ class PlayerActivity : AppCompatActivity() {
             controller.show(WindowInsetsCompat.Type.systemBars())
             btnFullscreen.setImageResource(R.drawable.ic_fullscreen)
         }
+        // 작업 화면에서는 화면 전체(screen)가 상태 표시줄만큼 비켜 앉고, 동영상 위 조작 막대는 여백이 필요 없다.
+        ViewCompat.setOnApplyWindowInsetsListener(screen) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            if (workMode) view.setPadding(bars.left, bars.top, bars.right, bars.bottom) else view.setPadding(0, 0, 0, 0)
+            insets
+        }
         for (v in listOf(controls, queuePanel)) {
             ViewCompat.setOnApplyWindowInsetsListener(v) { view, insets ->
                 val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-                view.setPadding(
+                if (workMode) view.setPadding(if (view === queuePanel) view.paddingLeft else 0, 0, 0, 0)
+                else view.setPadding(
                     if (view === queuePanel) view.paddingLeft else bars.left, bars.top, bars.right, bars.bottom
                 )
                 insets
             }
-            v.requestApplyInsets()
+        }
+        applyLayoutMode()
+        screen.requestApplyInsets()
+    }
+
+    /**
+     * 작업 화면 ↔ 동영상만 보기.
+     * 작업 화면: 세로(또는 큰 화면 가로)이고 전체화면이 아닐 때. 재생 조작 막대(bottomBar)를 아래 패널로 옮겨 늘 보이게 한다.
+     */
+    private fun applyLayoutMode() {
+        val cfg = resources.configuration
+        val landscape = cfg.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val large = cfg.smallestScreenWidthDp >= 600
+        val want = !fullscreen && !isInPictureInPictureMode && (!landscape || large)
+        val side = want && landscape
+        if (want != workMode) {
+            workMode = want
+            (bottomBar.parent as? ViewGroup)?.removeView(bottomBar)
+            if (want) {
+                workControls.addView(bottomBar, 0)
+                bottomBar.background = null
+            } else {
+                (controls as ViewGroup).addView(bottomBar)
+                bottomBar.setBackgroundResource(R.color.overlay)
+            }
+            tintBar(want)
+            sectionPanel.visibility = View.GONE
+        }
+        workSheet.visibility = if (want) View.VISIBLE else View.GONE
+        screen.orientation = if (side) android.widget.LinearLayout.HORIZONTAL else android.widget.LinearLayout.VERTICAL
+        val d = resources.displayMetrics.density
+        root.layoutParams = when {
+            !want || side -> android.widget.LinearLayout.LayoutParams(0, 0, 1f).apply {
+                if (side) height = ViewGroup.LayoutParams.MATCH_PARENT else width = ViewGroup.LayoutParams.MATCH_PARENT
+            }
+            else -> {
+                // 세로 작업 화면: 동영상 비율대로, 화면 높이의 절반을 넘지 않게
+                val w = resources.displayMetrics.widthPixels
+                val vs = player.videoSize
+                val ratio = if (vs.width > 0 && vs.height > 0) vs.width * vs.pixelWidthHeightRatio / vs.height else 16f / 9
+                val h = (w / ratio).toInt().coerceIn((w * 9 / 16f / 1.5f).toInt(), (resources.displayMetrics.heightPixels * 0.5f).toInt())
+                android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, h)
+            }
+        }
+        workSheet.layoutParams = if (side) android.widget.LinearLayout.LayoutParams((380 * d).toInt(), ViewGroup.LayoutParams.MATCH_PARENT)
+        else android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+        if (want) refreshWorkSections()
+    }
+
+    /** 조작 막대 글자·아이콘 색: 밝은 패널에서는 진하게, 동영상 위에서는 하얗게 */
+    private fun tintBar(light: Boolean) {
+        val c = if (light) ContextCompat.getColor(this, R.color.text_primary) else android.graphics.Color.WHITE
+        val list = android.content.res.ColorStateList.valueOf(c)
+        fun walk(v: View) {
+            when (v) {
+                is ImageButton -> v.imageTintList = list
+                is TextView -> v.setTextColor(c)
+                is ViewGroup -> for (i in 0 until v.childCount) walk(v.getChildAt(i))
+            }
+        }
+        walk(bottomBar)
+        if (light) btnPlay.imageTintList = android.content.res.ColorStateList.valueOf(ContextCompat.getColor(this, R.color.brand))
+    }
+
+    /** 작업 패널의 구간 목록: 누르면 그 구간 처음으로, × 로 빼기 */
+    private fun refreshWorkSections() {
+        if (!::workSections.isInitialized) return
+        workSectionInfo.text = sectionInfo.text
+        workSections.removeAllViews()
+        val d = resources.displayMetrics.density
+        sections.forEachIndexed { i, (s, e) ->
+            val row = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setBackgroundResource(R.drawable.bg_section_row)
+                setPadding((12 * d).toInt(), (6 * d).toInt(), (4 * d).toInt(), (6 * d).toInt())
+                layoutParams = android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    .apply { bottomMargin = (8 * d).toInt() }
+                setOnClickListener { player.seekTo(s) }
+            }
+            row.addView(TextView(this).apply {
+                text = "구간 ${i + 1}   ${Util.formatTime(s)} ~ ${Util.formatTime(e)}   (${Util.formatTime(e - s)})"
+                setTextColor(ContextCompat.getColor(this@PlayerActivity, R.color.text_primary))
+                textSize = 13.5f
+                layoutParams = android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            row.addView(ImageButton(this).apply {
+                setImageResource(R.drawable.ic_close)
+                imageTintList = android.content.res.ColorStateList.valueOf(ContextCompat.getColor(this@PlayerActivity, R.color.text_secondary))
+                setBackgroundResource(android.R.color.transparent)
+                contentDescription = "구간 빼기"
+                layoutParams = android.widget.LinearLayout.LayoutParams((36 * d).toInt(), (36 * d).toInt())
+                setOnClickListener {
+                    if (i < sections.size) { sections.removeAt(i); updateSections() }
+                }
+            })
+            workSections.addView(row)
+        }
+    }
+
+    /** 필름 타임라인 장면 그림을 뒤에서 뽑는다. 동영상이 바뀌면 다시. */
+    private fun loadFilmStrip(duration: Long) {
+        val item = player.currentMediaItem ?: return
+        val uri = item.localConfiguration?.uri ?: return
+        if (filmFor == item.mediaId) return
+        filmFor = item.mediaId
+        filmJob?.cancel()
+        val count = 12
+        filmStrip.frames = arrayOfNulls(count)
+        val h = (48 * resources.displayMetrics.density).toInt()
+        filmJob = lifecycleScope.launch(Dispatchers.IO) {
+            val job = coroutineContext[Job]
+            Thumbnails.filmFrames(this@PlayerActivity, uri, duration, count, h, { job?.isActive != true }) { i, bmp ->
+                filmStrip.post { if (filmFor == item.mediaId) filmStrip.setFrame(i, bmp) }
+            }
         }
     }
 
@@ -1737,6 +1904,10 @@ class PlayerActivity : AppCompatActivity() {
     // ---------------------------------------------------------------- 구간 편집 (여러 구간 저장 / 삭제 / GIF)
 
     private fun toggleSectionPanel() {
+        if (workMode) {
+            workSheet.smoothScrollTo(0, workSectionCard.top)
+            return
+        }
         if (sectionPanel.visibility == View.VISIBLE) {
             sectionPanel.visibility = View.GONE
         } else {
@@ -1760,6 +1931,7 @@ class PlayerActivity : AppCompatActivity() {
             sections.isEmpty() -> "원하는 곳에서 '시작'과 '끝'을 눌러 구간을 고르세요. 여러 개 고를 수 있어요."
             else -> "구간 ${sections.size}개 · 합계 ${Util.formatTime(sections.sumOf { it.second - it.first })}"
         }
+        refreshWorkSections()
     }
 
     private fun markSectionStart() {

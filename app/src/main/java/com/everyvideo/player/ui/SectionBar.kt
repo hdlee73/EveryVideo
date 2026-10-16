@@ -22,9 +22,12 @@ class SectionBar @JvmOverloads constructor(context: Context, attrs: AttributeSet
 
     val inset = 12 * resources.displayMetrics.density
     private val d = resources.displayMetrics.density
-    private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x99FFB020.toInt() }
-    private val ab = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x5539C6FF }
-    private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFB020.toInt(); strokeWidth = 2 * d }
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x33FFB020 }
+    private val ab = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xEE2D7FF9.toInt() }
+    private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFFFB020.toInt(); strokeWidth = 2.5f * d; style = Paint.Style.STROKE
+    }
+    private val mark = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFB020.toInt(); strokeWidth = 2 * d }
 
     override fun onTouchEvent(event: android.view.MotionEvent?) = false
 
@@ -35,13 +38,15 @@ class SectionBar @JvmOverloads constructor(context: Context, attrs: AttributeSet
 
     override fun onDraw(canvas: Canvas) {
         if (duration <= 0) return
-        val cy = height / 2f
-        abRange?.let { (s, e) -> canvas.drawRect(x(s), cy - 9 * d, x(e), cy + 9 * d, ab) }
+        // 필름(위아래 4dp 여백) 위에 구간을 주황 테두리 상자로, A-B 는 아래쪽 파란 띠로 그린다
+        val top = 4 * d + edge.strokeWidth / 2
+        val bottom = height - 4 * d - edge.strokeWidth / 2
+        abRange?.let { (s, e) -> canvas.drawRect(x(s), bottom - 5 * d, x(e), bottom, ab) }
         for ((s, e) in sections) {
-            canvas.drawRoundRect(x(s), cy - 6 * d, x(e), cy + 6 * d, 3 * d, 3 * d, fill)
-            canvas.drawLine(x(s), cy - 10 * d, x(s), cy + 10 * d, edge)
-            canvas.drawLine(x(e), cy - 10 * d, x(e), cy + 10 * d, edge)
+            val r = maxOf(x(e), x(s) + 4 * d)
+            canvas.drawRoundRect(x(s), top, r, bottom, 6 * d, 6 * d, fill)
+            canvas.drawRoundRect(x(s), top, r, bottom, 6 * d, 6 * d, edge)
         }
-        if (pendingStart >= 0) canvas.drawLine(x(pendingStart), cy - 12 * d, x(pendingStart), cy + 12 * d, edge)
+        if (pendingStart >= 0) canvas.drawLine(x(pendingStart), 0f, x(pendingStart), height.toFloat(), mark)
     }
 }
