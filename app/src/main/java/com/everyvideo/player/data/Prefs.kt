@@ -36,6 +36,11 @@ class Prefs(context: Context) {
         get() = sp.getInt("saturation", 0)
         set(v) = sp.edit().putInt("saturation", v).apply()
 
+    /** 큰 화면 가로 재생 화면에서 오른쪽 도구 패널을 접어 둘지. */
+    var hideToolPanel: Boolean
+        get() = sp.getBoolean("hideToolPanel", false)
+        set(v) = sp.edit().putBoolean("hideToolPanel", v).apply()
+
     /** 다시 열 때 마지막으로 보던 곳부터 재생할지. */
     var autoResume: Boolean
         get() = sp.getBoolean("autoResume", true)

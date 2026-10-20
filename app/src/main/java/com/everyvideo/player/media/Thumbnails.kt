@@ -91,44 +91,6 @@ object Thumbnails {
      * 장면 모음: 영상 전체에서 고르게 cols×rows 장면을 뽑아 바둑판으로 놓는다.
      * 맨 위에 제목, 각 장면 오른쪽 아래에 시각을 쓴다. 백그라운드 스레드에서 부른다.
      */
-    /**
-     * 필름 타임라인용 장면 그림: 동영상을 count 칸으로 나눠 각 칸 가운데 장면을 작게 뽑는다.
-     * 기기 파일과 http(s) 만 된다 (FTP·SMB·WebDAV 는 건너뜀). 다 뽑은 칸부터 onFrame 으로 알린다.
-     */
-    fun filmFrames(
-        context: Context, uri: Uri, durationMs: Long, count: Int, height: Int,
-        isCancelled: () -> Boolean, onFrame: (Int, Bitmap) -> Unit
-    ) {
-        if (durationMs <= 0) return
-        val r = MediaMetadataRetriever()
-        try {
-            when (uri.scheme) {
-                "content", "file", "android.resource" -> r.setDataSource(context, uri)
-                "http", "https" -> r.setDataSource(uri.toString(), HashMap())
-                else -> return
-            }
-            val vw = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 16
-            val vh = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 9
-            val rot = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
-            val (w0, h0) = if (rot == 90 || rot == 270) vh to vw else vw to vh
-            val h = height.coerceAtLeast(16)
-            val w = (h * w0.toFloat() / h0.coerceAtLeast(1)).toInt().coerceIn(16, h * 3)
-            for (i in 0 until count) {
-                if (isCancelled()) return
-                val at = durationMs * (2 * i + 1) / (2 * count)
-                val frame = runCatching {
-                    if (android.os.Build.VERSION.SDK_INT >= 27)
-                        r.getScaledFrameAtTime(at * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, w, h)
-                    else r.getFrameAtTime(at * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                }.getOrNull() ?: continue
-                onFrame(i, frame)
-            }
-        } catch (_: Exception) {
-        } finally {
-            runCatching { r.release() }
-        }
-    }
-
     fun renderSheet(
         context: Context, uri: Uri, cols: Int, rows: Int, title: String,
         isCancelled: () -> Boolean = { false }, onProgress: (Int) -> Unit = {}
