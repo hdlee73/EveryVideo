@@ -34,6 +34,9 @@ adb exec-out screencap -p > "$OUT/tablet-side.png"
 adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
 b=$(adb shell cat /sdcard/ui.xml | grep -o 'resource-id="com.everyvideo.player:id/timeBar"[^>]*bounds="[^"]*"' | grep -o 'bounds="[^"]*"' | grep -o '[0-9]\+' | tr '\n' ' ')
 echo "timeBar bounds: $b"
+adb shell cat /sdcard/ui.xml | grep -o '<node[^>]*timeBar[^>]*>' | head -2
+# 못 찾으면 이 에뮬레이터(2560x1600 가로)의 패널 막대 자리를 쓴다
+[ -n "$b" ] || b="1830 100 2490 160"
 if [ -n "$b" ]; then
   set -- $b
   y=$(( ($2 + $4) / 2 ))
