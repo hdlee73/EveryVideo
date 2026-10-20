@@ -28,6 +28,5 @@
     <color name="player_card">#F21B1E24</color>
     <color name="player_row_selected">#332D7FF9</color>
     <color name="player_accent">#FF8AB8FF</color>
-    <color name="film_bg">#FF2A2F38</color>
     <color name="section_row">#FFFFF8EA</color>
 </resources>

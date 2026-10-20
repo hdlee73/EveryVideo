@@ -156,6 +156,13 @@
                 android:src="@drawable/ic_aspect" />
 
             <ImageButton
+                android:id="@+id/btnPanel"
+                style="@style/PlayerIcon"
+                android:contentDescription="도구 패널 숨기기"
+                android:src="@drawable/ic_panel_hide"
+                android:visibility="gone" />
+
+            <ImageButton
                 android:id="@+id/btnQueue"
                 style="@style/PlayerIcon"
                 android:contentDescription="재생목록"
@@ -265,6 +272,7 @@
             android:paddingEnd="8dp">
 
             <LinearLayout
+                android:id="@+id/timeRow"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center_vertical"
@@ -281,19 +289,11 @@
                     android:text="00:00"
                     android:textColor="@android:color/white" />
 
+                <!-- 가는 시간 막대. 장면 그림은 막대 위에 마우스를 올리거나 끌 때만 위에 뜬다 (preview) -->
                 <FrameLayout
                     android:layout_width="0dp"
-                    android:layout_height="56dp"
+                    android:layout_height="40dp"
                     android:layout_weight="1">
-
-                    <!-- 필름 타임라인: 장면 그림을 깔고 그 위에서 누르거나 끈다 -->
-                    <com.everyvideo.player.ui.FilmStripView
-                        android:id="@+id/filmStrip"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:layout_marginTop="4dp"
-                        android:layout_marginBottom="4dp"
-                        android:importantForAccessibility="no" />
 
                     <androidx.media3.ui.DefaultTimeBar
                         android:id="@+id/timeBar"
@@ -301,7 +301,7 @@
                         android:layout_height="match_parent"
                         app:ad_marker_color="@color/accent"
                         app:ad_marker_width="4dp"
-                        app:bar_gravity="bottom"
+                        app:bar_gravity="center"
                         app:bar_height="4dp"
                         app:played_ad_marker_color="@color/accent"
                         app:played_color="@color/brand"
@@ -309,7 +309,7 @@
                         app:scrubber_disabled_size="0dp"
                         app:scrubber_dragged_size="24dp"
                         app:scrubber_enabled_size="16dp"
-                        app:touch_target_height="56dp" />
+                        app:touch_target_height="40dp" />
 
                     <com.everyvideo.player.ui.SectionBar
                         android:id="@+id/sectionBar"
@@ -328,6 +328,23 @@
                     android:minWidth="56dp"
                     android:text="00:00"
                     android:textColor="@android:color/white" />
+            </LinearLayout>
+
+            <!-- 작업 패널에서는 막대를 넓게 쓰도록 재생 시각과 길이를 막대 아래 양끝으로 옮긴다 -->
+            <LinearLayout
+                android:id="@+id/timeLabels"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="-6dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:visibility="gone">
+
+                <View
+                    android:id="@+id/timeLabelsGap"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
             </LinearLayout>
 
             <LinearLayout
@@ -388,6 +405,7 @@
                 android:scrollbars="none">
 
                 <LinearLayout
+                    android:id="@+id/toolRow"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal">
@@ -460,12 +478,11 @@
         android:id="@+id/preview"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom|start"
-        android:layout_marginBottom="104dp"
-        android:background="@android:color/black"
+        android:layout_gravity="top|start"
+        android:background="@drawable/bg_preview"
         android:elevation="8dp"
         android:orientation="vertical"
-        android:padding="2dp"
+        android:padding="4dp"
         android:visibility="invisible">
 
         <TextureView
@@ -478,9 +495,11 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center"
-            android:padding="2dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="1dp"
             android:textColor="@android:color/white"
-            android:textSize="12sp" />
+            android:textSize="12sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
     <TextView

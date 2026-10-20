@@ -25,7 +25,7 @@ class SectionBar @JvmOverloads constructor(context: Context, attrs: AttributeSet
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x33FFB020 }
     private val ab = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xEE2D7FF9.toInt() }
     private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFFFB020.toInt(); strokeWidth = 2.5f * d; style = Paint.Style.STROKE
+        color = 0xFFFFB020.toInt(); strokeWidth = 2f * d; style = Paint.Style.STROKE
     }
     private val mark = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFB020.toInt(); strokeWidth = 2 * d }
 
@@ -38,14 +38,15 @@ class SectionBar @JvmOverloads constructor(context: Context, attrs: AttributeSet
 
     override fun onDraw(canvas: Canvas) {
         if (duration <= 0) return
-        // 필름(위아래 4dp 여백) 위에 구간을 주황 테두리 상자로, A-B 는 아래쪽 파란 띠로 그린다
-        val top = 4 * d + edge.strokeWidth / 2
-        val bottom = height - 4 * d - edge.strokeWidth / 2
-        abRange?.let { (s, e) -> canvas.drawRect(x(s), bottom - 5 * d, x(e), bottom, ab) }
+        // 가운데 가는 막대를 감싸는 띠로 구간을 주황 테두리 상자로, A-B 는 막대 바로 아래 파란 띠로 그린다
+        val cy = height / 2f
+        val top = cy - 8 * d
+        val bottom = cy + 8 * d
+        abRange?.let { (s, e) -> canvas.drawRoundRect(x(s), cy + 4 * d, x(e), cy + 8 * d, 2 * d, 2 * d, ab) }
         for ((s, e) in sections) {
             val r = maxOf(x(e), x(s) + 4 * d)
-            canvas.drawRoundRect(x(s), top, r, bottom, 6 * d, 6 * d, fill)
-            canvas.drawRoundRect(x(s), top, r, bottom, 6 * d, 6 * d, edge)
+            canvas.drawRoundRect(x(s), top, r, bottom, 5 * d, 5 * d, fill)
+            canvas.drawRoundRect(x(s), top, r, bottom, 5 * d, 5 * d, edge)
         }
         if (pendingStart >= 0) canvas.drawLine(x(pendingStart), 0f, x(pendingStart), height.toFloat(), mark)
     }

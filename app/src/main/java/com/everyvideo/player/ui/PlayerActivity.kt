@@ -150,10 +150,13 @@ class PlayerActivity : AppCompatActivity() {
     private lateinit var workSectionCard: View
     private lateinit var workSections: android.widget.LinearLayout
     private lateinit var workSectionInfo: TextView
-    private lateinit var filmStrip: FilmStripView
+    private lateinit var timeRow: android.widget.LinearLayout
+    private lateinit var timeLabels: android.widget.LinearLayout
+    private lateinit var toolRow: android.widget.LinearLayout
+    private lateinit var btnPanel: ImageButton
     private var workMode = false
-    private var filmJob: Job? = null
-    private var filmFor: String? = null
+    /** 큰 화면 가로에서 오른쪽 도구 패널을 접어 동영상만 크게 볼 때 */
+    private var panelHidden = false
 
     private var fullscreen = true
     private var locked = false
@@ -304,7 +307,21 @@ class PlayerActivity : AppCompatActivity() {
         workSectionCard = findViewById(R.id.workSectionCard)
         workSections = findViewById(R.id.workSections)
         workSectionInfo = findViewById(R.id.workSectionInfo)
-        filmStrip = findViewById(R.id.filmStrip)
+        timeRow = findViewById(R.id.timeRow)
+        timeLabels = findViewById(R.id.timeLabels)
+        toolRow = findViewById(R.id.toolRow)
+        btnPanel = findViewById(R.id.btnPanel)
+        // 장면 미리보기는 화면 맨 위 층에 띄워, 동영상 위든 아래·옆 패널이든 시간 막대 바로 곁에 보이게 한다
+        (preview.parent as ViewGroup).removeView(preview)
+        findViewById<FrameLayout>(android.R.id.content).addView(preview)
+        panelHidden = prefs.hideToolPanel
+        btnPanel.setOnClickListener {
+            panelHidden = !panelHidden
+            prefs.hideToolPanel = panelHidden
+            applyLayoutMode()
+            screen.requestApplyInsets()
+            setControlsVisible(true)
+        }
         findViewById<View>(R.id.workIn).setOnClickListener { markSectionStart() }
         findViewById<View>(R.id.workOut).setOnClickListener { markSectionEnd() }
         findViewById<View>(R.id.workCapture).setOnClickListener { captureFrame() }
@@ -552,11 +569,6 @@ class PlayerActivity : AppCompatActivity() {
     private fun onItemChanged(item: MediaItem?) {
         item ?: return
         lastItemId = item.mediaId
-        if (filmFor != item.mediaId) {
-            filmJob?.cancel()
-            filmFor = null
-            filmStrip.frames = emptyArray()
-        }
         subtitle = null
         subtitleOffset = 0L
         titleText.text = item.mediaMetadata.title
@@ -619,7 +631,6 @@ class PlayerActivity : AppCompatActivity() {
             timeBar.setDuration(duration)
             durationText.text = Util.formatTime(duration)
             sectionBar.duration = duration
-            loadFilmStrip(duration)
         }
     }
 
@@ -717,13 +728,18 @@ class PlayerActivity : AppCompatActivity() {
     /**
      * 작업 화면 ↔ 동영상만 보기.
      * 작업 화면: 세로(또는 큰 화면 가로)이고 전체화면이 아닐 때. 재생 조작 막대(bottomBar)를 아래 패널로 옮겨 늘 보이게 한다.
+     * 큰 화면 가로에서는 위 막대의 패널 버튼으로 오른쪽 패널을 접고 펼 수 있다.
      */
     private fun applyLayoutMode() {
         val cfg = resources.configuration
         val landscape = cfg.orientation == Configuration.ORIENTATION_LANDSCAPE
         val large = cfg.smallestScreenWidthDp >= 600
-        val want = !fullscreen && !isInPictureInPictureMode && (!landscape || large)
+        val canSide = !fullscreen && !isInPictureInPictureMode && landscape && large
+        val want = !fullscreen && !isInPictureInPictureMode && (!landscape || (large && !panelHidden))
         val side = want && landscape
+        btnPanel.visibility = if (canSide) View.VISIBLE else View.GONE
+        btnPanel.setImageResource(if (side) R.drawable.ic_panel_hide else R.drawable.ic_panel_show)
+        btnPanel.contentDescription = if (side) "도구 패널 숨기기" else "도구 패널 보이기"
         if (want != workMode) {
             workMode = want
             (bottomBar.parent as? ViewGroup)?.removeView(bottomBar)
@@ -734,8 +750,10 @@ class PlayerActivity : AppCompatActivity() {
                 (controls as ViewGroup).addView(bottomBar)
                 bottomBar.setBackgroundResource(R.color.overlay)
             }
+            moveTimeLabels(want)
             tintBar(want)
             sectionPanel.visibility = View.GONE
+            hidePreview()
         }
         workSheet.visibility = if (want) View.VISIBLE else View.GONE
         screen.orientation = if (side) android.widget.LinearLayout.HORIZONTAL else android.widget.LinearLayout.VERTICAL
@@ -753,9 +771,62 @@ class PlayerActivity : AppCompatActivity() {
                 android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, h)
             }
         }
-        workSheet.layoutParams = if (side) android.widget.LinearLayout.LayoutParams((380 * d).toInt(), ViewGroup.LayoutParams.MATCH_PARENT)
+        workSheet.layoutParams = if (side) android.widget.LinearLayout.LayoutParams((400 * d).toInt(), ViewGroup.LayoutParams.MATCH_PARENT)
         else android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
         if (want) refreshWorkSections()
+        toolRow.post { fitToolRow() }
+    }
+
+    /** 작업 패널에서는 재생 시각·길이를 막대 아래 양끝으로 내려 막대를 넓게 쓰고, 동영상 위에서는 막대 양옆에 둔다. */
+    private fun moveTimeLabels(below: Boolean) {
+        for (v in listOf(positionText, durationText)) (v.parent as? ViewGroup)?.removeView(v)
+        val gap = timeLabels.findViewById<View>(R.id.timeLabelsGap)
+        if (below) {
+            timeLabels.addView(positionText, 0)
+            timeLabels.addView(durationText)
+            for (v in listOf(positionText, durationText)) {
+                v.layoutParams = android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                v.minWidth = 0
+                v.minimumWidth = 0
+                v.textSize = 12f
+                v.setPadding((12 * resources.displayMetrics.density).toInt(), 0, (12 * resources.displayMetrics.density).toInt(), 0)
+            }
+            timeLabels.visibility = View.VISIBLE
+        } else {
+            val d = resources.displayMetrics.density
+            timeRow.addView(positionText, 0)
+            timeRow.addView(durationText)
+            positionText.layoutParams = android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, (40 * d).toInt())
+            durationText.layoutParams = android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            for (v in listOf(positionText, durationText)) {
+                v.minWidth = (56 * d).toInt()
+                v.minimumWidth = (56 * d).toInt()
+                v.textSize = 14f
+                v.setPadding(0, 0, 0, 0)
+            }
+            timeLabels.visibility = View.GONE
+        }
+        gap.visibility = if (below) View.VISIBLE else View.GONE
+    }
+
+    /**
+     * 도구 아이콘 줄: 작업 패널에서는 폭에 맞춰 아이콘 칸을 줄여 끝의 전체화면 버튼까지 한눈에 보이게 한다.
+     * 동영상 위에서는 원래 크기(44dp)로 두고 넘치면 옆으로 민다.
+     */
+    private fun fitToolRow() {
+        val d = resources.displayMetrics.density
+        val full = (44 * d).toInt()
+        val avail = (toolRow.parent as View).width
+        val icons = (0 until toolRow.childCount).map { toolRow.getChildAt(it) }.filter { it.visibility != View.GONE }
+        val size = if (workMode && avail > 0 && icons.isNotEmpty()) (avail / icons.size).coerceIn((32 * d).toInt(), full) else full
+        for (v in icons) {
+            val lp = v.layoutParams
+            if (lp.width == size) continue
+            lp.width = size
+            v.layoutParams = lp
+            val pad = if (size >= full) (10 * d).toInt() else ((size - 20 * d) / 2).toInt().coerceAtLeast((6 * d).toInt())
+            v.setPadding(pad, (10 * d).toInt(), pad, (10 * d).toInt())
+        }
     }
 
     /** 조작 막대 글자·아이콘 색: 밝은 패널에서는 진하게, 동영상 위에서는 하얗게 */
@@ -770,6 +841,9 @@ class PlayerActivity : AppCompatActivity() {
             }
         }
         walk(bottomBar)
+        // 밝은 패널에서는 아직 안 본 부분이 하얀 반투명이면 안 보이므로 회색으로
+        timeBar.setUnplayedColor(if (light) 0xFFDDE1E7.toInt() else 0x33FFFFFF)
+        timeBar.setBufferedColor(if (light) 0xFFB9C1CC.toInt() else 0xCCFFFFFF.toInt())
         if (light) btnPlay.imageTintList = android.content.res.ColorStateList.valueOf(ContextCompat.getColor(this, R.color.brand))
     }
 
@@ -806,24 +880,6 @@ class PlayerActivity : AppCompatActivity() {
                 }
             })
             workSections.addView(row)
-        }
-    }
-
-    /** 필름 타임라인 장면 그림을 뒤에서 뽑는다. 동영상이 바뀌면 다시. */
-    private fun loadFilmStrip(duration: Long) {
-        val item = player.currentMediaItem ?: return
-        val uri = item.localConfiguration?.uri ?: return
-        if (filmFor == item.mediaId) return
-        filmFor = item.mediaId
-        filmJob?.cancel()
-        val count = 12
-        filmStrip.frames = arrayOfNulls(count)
-        val h = (48 * resources.displayMetrics.density).toInt()
-        filmJob = lifecycleScope.launch(Dispatchers.IO) {
-            val job = coroutineContext[Job]
-            Thumbnails.filmFrames(this@PlayerActivity, uri, duration, count, h, { job?.isActive != true }) { i, bmp ->
-                filmStrip.post { if (filmFor == item.mediaId) filmStrip.setFrame(i, bmp) }
-            }
         }
     }
 
@@ -1203,6 +1259,7 @@ class PlayerActivity : AppCompatActivity() {
                 KeyEvent.KEYCODE_DPAD_LEFT -> if (controls.visibility != View.VISIBLE) { seekBy(-10_000); return true }
                 KeyEvent.KEYCODE_DPAD_RIGHT -> if (controls.visibility != View.VISIBLE) { seekBy(10_000); return true }
                 KeyEvent.KEYCODE_F -> { btnFullscreen.performClick(); return true }
+                KeyEvent.KEYCODE_P -> if (btnPanel.visibility == View.VISIBLE) { btnPanel.performClick(); return true }
                 KeyEvent.KEYCODE_B -> { addBookmark(); return true }
                 KeyEvent.KEYCODE_L -> { toggleQueue(); return true }
                 KeyEvent.KEYCODE_0 -> { resetZoom(); return true }
@@ -1460,23 +1517,23 @@ class PlayerActivity : AppCompatActivity() {
         previewTime.text = Util.formatTime(position)
         preview.visibility = View.VISIBLE
 
+        // 시간 막대에서 그 시각 위치 바로 위(위에 자리가 없으면 아래)에 띄운다
+        val host = preview.parent as View
         val loc = IntArray(2)
-        val rootLoc = IntArray(2)
+        val hostLoc = IntArray(2)
         timeBar.getLocationInWindow(loc)
-        root.getLocationInWindow(rootLoc)
+        host.getLocationInWindow(hostLoc)
+        val d = resources.displayMetrics.density
         val inset = sectionBar.inset
-        val barLeft = loc[0] - rootLoc[0] + timeBar.paddingLeft + inset
+        val barLeft = loc[0] - hostLoc[0] + timeBar.paddingLeft + inset
         val barWidth = timeBar.width - timeBar.paddingLeft - timeBar.paddingRight - 2 * inset
         val centerX = barLeft + barWidth * (position.toFloat() / duration)
-        val w = preview.width.takeIf { it > 0 } ?: (196 * resources.displayMetrics.density).toInt()
-        preview.translationX = (centerX - w / 2f).coerceIn(0f, (root.width - w).toFloat().coerceAtLeast(0f))
-        val barTop = loc[1] - rootLoc[1]
-        val lp = preview.layoutParams as FrameLayout.LayoutParams
-        val margin = (root.height - barTop + (4 * resources.displayMetrics.density).toInt()).coerceAtLeast(0)
-        if (lp.bottomMargin != margin) {
-            lp.bottomMargin = margin
-            preview.layoutParams = lp
-        }
+        val w = preview.width.takeIf { it > 0 } ?: (200 * d).toInt()
+        val h = preview.height.takeIf { it > 0 } ?: (136 * d).toInt()
+        preview.translationX = (centerX - w / 2f).coerceIn(0f, (host.width - w).toFloat().coerceAtLeast(0f))
+        val barTop = loc[1] - hostLoc[1] + timeBar.height / 2f - 10 * d
+        val above = barTop - h - 4 * d
+        preview.translationY = if (above >= 0) above else barTop + 20 * d + 4 * d
     }
 
     private fun hidePreview() {
