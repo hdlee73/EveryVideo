@@ -12,6 +12,7 @@ import android.graphics.Paint
 import android.media.AudioManager
 import android.media.audiofx.LoudnessEnhancer
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -531,6 +532,7 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun loadIntent(intent: Intent) {
         val uris: List<Uri> = intent.getStringArrayListExtra(EXTRA_URIS)?.map(Uri::parse)
+            ?: sharedUris(intent)
             ?: listOfNotNull(intent.data)
         if (uris.isEmpty()) {
             Util.toast(this, "재생할 동영상이 없습니다")
@@ -551,6 +553,22 @@ class PlayerActivity : AppCompatActivity() {
         player.play()
         onItemChanged(items[index])
         refreshQueue()
+    }
+
+    /** 다른 앱(구글 포토 등)의 "공유"로 넘어온 동영상 주소. */
+    @Suppress("DEPRECATION")
+    private fun sharedUris(intent: Intent): List<Uri>? {
+        val list: List<Uri> = when (intent.action) {
+            Intent.ACTION_SEND -> listOfNotNull(
+                if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                else intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            )
+            Intent.ACTION_SEND_MULTIPLE ->
+                (if (Build.VERSION.SDK_INT >= 33) intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                else intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)).orEmpty()
+            else -> return null
+        }
+        return list.ifEmpty { null }
     }
 
     private fun mediaItemOf(uri: Uri): MediaItem = MediaItem.Builder()

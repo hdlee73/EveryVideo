@@ -17,6 +17,12 @@ object AboutDialog {
     const val AUTHOR = "이현덕"
     const val EMAIL = "hdlee73@gmail.com"
 
+    private const val USAGE = "사용 방법\n" +
+        "• 파일 열기·주소로 열기로 동영상을 고르면 바로 재생돼요.\n" +
+        "• 구글 포토·갤러리에서 동영상을 열고 공유 → EveryVideo를 고르면 재생돼요.\n" +
+        "• 재생 중 구간 저장·화면 캡쳐·재생목록 도구를 쓸 수 있어요.\n" +
+        "• 새 버전은 앱을 열 때 자동으로 알려드려요."
+
     private const val PREFS = "settings"
     private const val KEY_LAST_CHECK = "updateLastCheck"
     private const val KEY_SKIP = "updateSkipVersion"
@@ -27,6 +33,7 @@ object AboutDialog {
         val v = LayoutInflater.from(context).inflate(R.layout.dialog_about, null)
         v.findViewById<TextView>(R.id.aboutVersion).text = "버전 ${BuildConfig.VERSION_NAME}  ·  업데이트 ${BuildConfig.BUILD_DATE}"
         v.findViewById<TextView>(R.id.aboutAuthor).text = AUTHOR
+        v.findViewById<TextView>(R.id.aboutUsage).text = USAGE
         v.findViewById<TextView>(R.id.aboutEmail).text = EMAIL
         v.findViewById<View>(R.id.aboutEmailRow).setOnClickListener {
             open(context, Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$EMAIL")).putExtra(Intent.EXTRA_SUBJECT, "EveryVideo ${BuildConfig.VERSION_NAME} 문의"))
