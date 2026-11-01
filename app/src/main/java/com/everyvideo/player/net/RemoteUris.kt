@@ -31,6 +31,7 @@ object RemoteUris {
         if (server.type == "smb" && server.share.isNotBlank()) b.appendPath(server.share)
         path.split('/').filter { it.isNotEmpty() }.forEach { b.appendPath(it) }
         if (server.type == "smb" && server.domain.isNotBlank()) b.appendQueryParameter("domain", server.domain)
+        if (server.type == "ftp" && server.encoding != Ftp.AUTO) b.appendQueryParameter("enc", server.encoding)
         return b.build()
     }
 

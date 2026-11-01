@@ -7,6 +7,7 @@ import androidx.lifecycle.lifecycleScope
 import com.everyvideo.player.App
 import com.everyvideo.player.R
 import com.everyvideo.player.data.RemoteServer
+import com.everyvideo.player.net.Ftp
 import com.everyvideo.player.ui.AppDialog
 import com.everyvideo.player.ui.Util
 import com.google.android.material.button.MaterialButtonToggleGroup
@@ -55,11 +56,14 @@ class ServersPage : ListPage() {
         fun text(id: Int) = v.findViewById<EditText>(id)
         val shareLayout = v.findViewById<View>(R.id.shareLayout)
         val domainLayout = v.findViewById<View>(R.id.domainLayout)
+        val encodingLayout = v.findViewById<View>(R.id.encodingLayout)
+        val encoding = v.findViewById<MaterialButtonToggleGroup>(R.id.encoding)
         val hostLayout = v.findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.hostLayout)
         fun sync() {
             val smb = type.checkedButtonId == R.id.typeSmb
             shareLayout.visibility = if (smb) View.VISIBLE else View.GONE
             domainLayout.visibility = if (smb) View.VISIBLE else View.GONE
+            encodingLayout.visibility = if (type.checkedButtonId == R.id.typeFtp) View.VISIBLE else View.GONE
             hostLayout.hint = if (type.checkedButtonId == R.id.typeDav) "주소 (예: https://nas.local:5006/dav)" else "주소 (예: 192.168.0.10)"
         }
         type.addOnButtonCheckedListener { _, _, _ -> sync() }
@@ -70,6 +74,7 @@ class ServersPage : ListPage() {
             text(R.id.share).setText(it.share); text(R.id.path).setText(it.path)
             text(R.id.user).setText(it.user); text(R.id.password).setText(it.password)
             text(R.id.domain).setText(it.domain)
+            encoding.check(when (it.encoding) { Ftp.UTF8 -> R.id.encUtf8; Ftp.CP949 -> R.id.encCp949; else -> R.id.encAuto })
         }
         sync()
         lateinit var dialog: AppDialog
@@ -96,7 +101,10 @@ class ServersPage : ListPage() {
                             host = host, port = text(R.id.port).text.toString().toIntOrNull() ?: 0,
                             share = text(R.id.share).text.toString().trim().trim('/'), path = p,
                             user = text(R.id.user).text.toString().trim(), password = text(R.id.password).text.toString(),
-                            domain = text(R.id.domain).text.toString().trim()
+                            domain = text(R.id.domain).text.toString().trim(),
+                            encoding = if (t != "ftp") Ftp.AUTO else when (encoding.checkedButtonId) {
+                                R.id.encUtf8 -> Ftp.UTF8; R.id.encCp949 -> Ftp.CP949; else -> Ftp.AUTO
+                            }
                         )
                         lifecycleScope.launch { dao.upsert(server) }
                         dialog.dismiss()

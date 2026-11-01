@@ -23,13 +23,18 @@ object RemoteBrowser {
 
     private fun listFtp(server: RemoteServer, path: String): List<RemoteEntry> {
         val uri: Uri = RemoteUris.build(server, path)
-        val c = Ftp.connect(uri)
+        val session = Ftp.connect(uri)
         try {
-            return c.listFiles(path.ifEmpty { "/" }).filterNotNull()
-                .filter { it.name != "." && it.name != ".." }
-                .map { RemoteEntry(it.name, it.isDirectory, it.size, child(path, it.name)) }
+            val dir = session.resolve(path.ifEmpty { "/" }, isDir = true)
+            val files = session.client.listFiles(dir).filterNotNull()
+                .filter { it.name != null && it.name != "." && it.name != ".." }
+            session.learn(files.map { it.name })
+            return files.map {
+                val name = session.decode(it.name)
+                RemoteEntry(name, it.isDirectory, it.size, child(path, name))
+            }
         } finally {
-            Ftp.close(c)
+            Ftp.close(session)
         }
     }
 

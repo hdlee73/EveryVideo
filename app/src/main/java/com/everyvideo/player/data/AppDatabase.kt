@@ -1,6 +1,7 @@
 package com.everyvideo.player.data
 
 import android.content.Context
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Delete
@@ -49,7 +50,9 @@ data class RemoteServer(
     val path: String,
     val user: String,
     val password: String,
-    val domain: String
+    val domain: String,
+    /** FTP 파일 이름 인코딩: "auto" | "utf-8" | "cp949" */
+    @ColumnInfo(defaultValue = "auto") val encoding: String = "auto"
 )
 
 @Entity(tableName = "playlists")
@@ -165,7 +168,7 @@ interface ServerDao {
 
 @Database(
     entities = [Bookmark::class, Recent::class, RemoteServer::class, Playlist::class, PlaylistItem::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -182,9 +185,15 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `servers` ADD COLUMN `encoding` TEXT NOT NULL DEFAULT 'auto'")
+            }
+        }
+
         fun create(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "everyvideo.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .fallbackToDestructiveMigration()
                 .build()
     }
