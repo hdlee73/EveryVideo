@@ -12,26 +12,124 @@ import org.apache.commons.net.ftp.FTPClient
 import java.io.BufferedInputStream
 import java.io.IOException
 import java.io.InputStream
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.Charset
+import java.nio.charset.CodingErrorAction
+import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * FTP 연결.
+ *
+ * 한국 NAS/공유기 FTP 는 파일 이름을 CP949(EUC-KR) 로 주는 곳이 많다. 그래서 제어 연결은
+ * ISO-8859-1 로 열어 바이트를 그대로 받고, 이름과 경로는 여기서 직접 바꾼다.
+ * 자동이면 이름 바이트가 올바른 UTF-8 인지 보고, 아니면 CP949 로 읽는다.
+ */
 object Ftp {
-    fun connect(uri: Uri): FTPClient {
+    const val AUTO = "auto"
+    const val UTF8 = "utf-8"
+    const val CP949 = "cp949"
+
+    private val LATIN1 = Charsets.ISO_8859_1
+    val KOREAN: Charset = listOf("x-windows-949", "MS949", "windows-949", "EUC-KR")
+        .firstNotNullOfOrNull { runCatching { Charset.forName(it) }.getOrNull() } ?: Charsets.UTF_8
+
+    /** 서버(host:port)별로 알아낸 인코딩. 자동 모드에서 재생할 때도 같은 인코딩을 쓴다. */
+    private val detected = ConcurrentHashMap<String, Charset>()
+
+    class Session(val client: FTPClient, val mode: String, private val key: String) {
+        var charset: Charset = when (mode) {
+            CP949 -> KOREAN
+            UTF8 -> Charsets.UTF_8
+            else -> detected[key] ?: Charsets.UTF_8
+        }
+            private set
+
+        /** 유니코드 경로 → 서버로 보낼 문자열(바이트를 ISO-8859-1 로 담은 것). */
+        fun encode(path: String, cs: Charset = charset): String = String(path.toByteArray(cs), LATIN1)
+
+        /** 서버가 준 문자열(ISO-8859-1) → 유니코드 이름. */
+        fun decode(raw: String): String {
+            if (raw.all { it.code < 0x80 }) return raw
+            val bytes = raw.toByteArray(LATIN1)
+            if (mode == AUTO) return strictUtf8(bytes) ?: String(bytes, KOREAN)
+            return String(bytes, charset)
+        }
+
+        /** 목록에서 본 이름들로 서버 인코딩을 정한다(자동 모드). */
+        fun learn(rawNames: List<String>) {
+            if (mode != AUTO) return
+            val nonAscii = rawNames.filter { n -> n.any { it.code >= 0x80 } }
+            if (nonAscii.isEmpty()) return
+            val utf8 = nonAscii.all { strictUtf8(it.toByteArray(LATIN1)) != null }
+            charset = if (utf8) Charsets.UTF_8 else KOREAN
+            detected[key] = charset
+        }
+
+        /**
+         * 한글 등 비 ASCII 경로를 서버에서 찾을 수 있는 인코딩으로 바꾼다.
+         * 자동 모드에서 아직 모르면 UTF-8, CP949 를 차례로 시험한다.
+         */
+        fun resolve(path: String, isDir: Boolean): String {
+            if (mode != AUTO || path.all { it.code < 0x80 }) return encode(path)
+            val candidates = listOf(charset) + listOf(Charsets.UTF_8, KOREAN).filter { it != charset }
+            for (cs in candidates) {
+                val p = encode(path, cs)
+                val found = runCatching {
+                    if (isDir) client.changeWorkingDirectory(p)
+                    else client.mlistFile(p) != null || client.listFiles(p).isNotEmpty()
+                }.getOrDefault(false)
+                if (found) {
+                    charset = cs
+                    detected[key] = cs
+                    return p
+                }
+            }
+            return encode(path)
+        }
+    }
+
+    private fun strictUtf8(bytes: ByteArray): String? = try {
+        Charsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(bytes)).toString()
+    } catch (_: CharacterCodingException) {
+        null
+    }
+
+    /** 주소의 ?enc= 값(서버 설정). 없으면 자동. */
+    fun modeOf(uri: Uri): String = when (uri.getQueryParameter("enc")?.lowercase()) {
+        UTF8, "utf8" -> UTF8
+        CP949, "euc-kr", "ms949" -> CP949
+        else -> AUTO
+    }
+
+    fun connect(uri: Uri): Session {
         val cred = RemoteUris.credentials(uri)
+        val mode = modeOf(uri)
         val client = FTPClient()
-        client.controlEncoding = "UTF-8"
+        client.controlEncoding = LATIN1.name()
+        client.autodetectUTF8 = false
         client.connectTimeout = 15_000
         client.setDataTimeout(java.time.Duration.ofSeconds(30))
-        client.connect(uri.host, if (uri.port > 0) uri.port else 21)
+        val port = if (uri.port > 0) uri.port else 21
+        client.connect(uri.host, port)
         val ok = if (cred.user.isBlank()) client.login("anonymous", "everyvideo@")
         else client.login(cred.user, cred.password)
         if (!ok) {
             runCatching { client.disconnect() }
             throw IOException("FTP 로그인 실패: ${client.replyString?.trim()}")
         }
+        // UTF-8 을 지원하는 서버는 UTF-8 로 바꿔 달라고 한다(지원하지 않으면 무시된다).
+        if (mode != CP949) runCatching { client.sendCommand("OPTS", "UTF8 ON") }
         client.enterLocalPassiveMode()
         client.setFileType(FTP.BINARY_FILE_TYPE)
         client.bufferSize = 256 * 1024
-        return client
+        return Session(client, mode, "${uri.host}:$port")
     }
+
+    fun close(session: Session) = close(session.client)
 
     fun close(client: FTPClient) {
         runCatching { if (client.isConnected) client.logout() }
@@ -51,9 +149,10 @@ class FtpDataSource : BaseDataSource(true) {
         uri = dataSpec.uri
         transferInitializing(dataSpec)
         try {
-            val c = Ftp.connect(dataSpec.uri)
+            val session = Ftp.connect(dataSpec.uri)
+            val c = session.client
             client = c
-            val path = dataSpec.uri.path ?: "/"
+            val path = session.resolve(dataSpec.uri.path ?: "/", isDir = false)
             val size = c.mlistFile(path)?.size?.takeIf { it >= 0 }
                 ?: c.listFiles(path).firstOrNull()?.size ?: C.LENGTH_UNSET.toLong()
             if (dataSpec.position > 0) c.restartOffset = dataSpec.position
