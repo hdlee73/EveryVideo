@@ -5,7 +5,6 @@
     <color name="brand_dark">#FF1A237E</color>
     <color name="accent">#FFFFB020</color>
     <color name="overlay">#99000000</color>
-    <color name="ic_launcher_background">#FF3D5AFE</color>
 
     <!-- 앱 화면 (밝은 테마) -->
     <color name="primary">#FF2D7FF9</color>
