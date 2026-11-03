@@ -53,18 +53,9 @@ adb shell wm size reset
 adb shell wm density reset
 adb shell settings put system user_rotation 0
 adb shell am force-stop $PKG
-if adb root >/dev/null 2>&1; then
-  adb wait-for-device
-  sleep 3
-  f=/data/data/$PKG/shared_prefs/settings.xml
-  uid=$(adb shell stat -c %u /data/data/$PKG | tr -d '\r')
-  adb shell "sed -i 's#</map>#<int name=\"sharpen\" value=\"60\" /><int name=\"denoise\" value=\"40\" /><boolean name=\"upscale\" value=\"true\" /></map>#' $f && chown $uid:$uid $f && cat $f"
-  adb shell am start -W -a android.intent.action.VIEW -t video/mp4 -d "file://$DIR/test.mp4" -n "$PKG/.ui.PlayerActivity"
-  sleep 12
-  adb exec-out screencap -p > "$OUT/quality.png"
-else
-  echo "adb root not available; skipping quality check"
-fi
+adb shell am start -W -a android.intent.action.VIEW -t video/mp4 -d "file://$DIR/test.mp4" --es ev.test.quality 60,40,1 -n "$PKG/.ui.PlayerActivity"
+sleep 12
+adb exec-out screencap -p > "$OUT/quality.png"
 adb logcat -d > "$OUT/logcat.txt"
 crashed=0
 if grep -q "FATAL EXCEPTION" "$OUT/logcat.txt"; then

@@ -223,6 +223,12 @@ class PlayerActivity : AppCompatActivity() {
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         exporter = VideoExporter(this)
         bindViews()
+        // 자동 점검(CI)용: "선명,노이즈,업스케일(0/1)" 로 화질 개선 설정을 넣고 연다.
+        intent.getStringExtra("ev.test.quality")?.split(',')?.takeIf { it.size == 3 }?.let { q ->
+            prefs.sharpen = q[0].toIntOrNull()?.coerceIn(0, 100) ?: 0
+            prefs.denoise = q[1].toIntOrNull()?.coerceIn(0, 100) ?: 0
+            prefs.upscale = q[2] == "1"
+        }
         initPlayer()
         loadIntent(intent)
         applyFullscreen()
