@@ -36,6 +36,19 @@ class Prefs(context: Context) {
         get() = sp.getInt("saturation", 0)
         set(v) = sp.edit().putInt("saturation", v).apply()
 
+    /** 화질 개선: 선명하게, 노이즈 줄이기 (0~100, 0 = 끔), 화면 해상도로 업스케일. */
+    var sharpen: Int
+        get() = sp.getInt("sharpen", 0)
+        set(v) = sp.edit().putInt("sharpen", v).apply()
+
+    var denoise: Int
+        get() = sp.getInt("denoise", 0)
+        set(v) = sp.edit().putInt("denoise", v).apply()
+
+    var upscale: Boolean
+        get() = sp.getBoolean("upscale", false)
+        set(v) = sp.edit().putBoolean("upscale", v).apply()
+
     /** 큰 화면 가로 재생 화면에서 오른쪽 도구 패널을 접어 둘지. */
     var hideToolPanel: Boolean
         get() = sp.getBoolean("hideToolPanel", false)

@@ -49,6 +49,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Effect
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
@@ -67,6 +68,12 @@ import com.everyvideo.player.data.Playlist
 import com.everyvideo.player.data.PlaylistItem
 import com.everyvideo.player.data.Prefs
 import com.everyvideo.player.data.Recent
+import com.everyvideo.player.enhance.ColorizeEffect
+import com.everyvideo.player.enhance.Colorizer
+import com.everyvideo.player.enhance.ModelStore
+import com.everyvideo.player.enhance.QualityEffects
+import com.everyvideo.player.enhance.QualitySettings
+import com.everyvideo.player.enhance.Upscaler
 import com.everyvideo.player.media.GifMaker
 import com.everyvideo.player.media.MediaStoreSaver
 import com.everyvideo.player.media.Subtitles
@@ -134,6 +141,14 @@ class PlayerActivity : AppCompatActivity() {
     private lateinit var volumeSlider: Slider
     private lateinit var contrastSlider: Slider
     private lateinit var saturationSlider: Slider
+    private lateinit var sharpenSlider: Slider
+    private lateinit var denoiseSlider: Slider
+    private lateinit var upscaleSwitch: MaterialSwitch
+
+    /** 화질 개선용 GPU 효과 처리 경로를 플레이어에 만들어 두었는지 (한 번 만들면 계속 유지). */
+    private var qualityPipeline = false
+    private var appliedQualityKey: String? = null
+    private val applyQualityTask = Runnable { applyQuality() }
     private lateinit var queuePanel: View
     private lateinit var queueList: RecyclerView
     private lateinit var btnSpeedReset: TextView
@@ -294,6 +309,9 @@ class PlayerActivity : AppCompatActivity() {
         volumeSlider = findViewById(R.id.volumeSlider)
         contrastSlider = findViewById(R.id.contrastSlider)
         saturationSlider = findViewById(R.id.saturationSlider)
+        sharpenSlider = findViewById(R.id.sharpenSlider)
+        denoiseSlider = findViewById(R.id.denoiseSlider)
+        upscaleSwitch = findViewById(R.id.upscaleSwitch)
         queuePanel = findViewById(R.id.queuePanel)
         queueList = findViewById(R.id.queueList)
         queueInfo = findViewById(R.id.queueInfo)
@@ -457,6 +475,15 @@ class PlayerActivity : AppCompatActivity() {
             .setSeekForwardIncrementMs(10_000)
             .build()
         playerView.player = player
+        // 화질 개선이 켜져 있으면 준비(prepare) 전에 GPU 효과 경로를 만든다.
+        if (!currentQuality().isOff) {
+            qualityPipeline = true
+            appliedQualityKey = qualityKey()
+            player.setVideoEffects(qualityEffects())
+        }
+        playerView.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, orr, ob ->
+            if ((r - l != orr - ol || b - t != ob - ot) && prefs.upscale) scheduleQualityApply()
+        }
         player.addListener(object : Player.Listener {
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
                 loudness?.release()
@@ -1311,12 +1338,29 @@ class PlayerActivity : AppCompatActivity() {
             if (fromUser) { prefs.saturation = value.toInt(); applyVideoColor() }
             findViewById<TextView>(R.id.saturationValue).text = "채도 ${signed(value.toInt())}"
         }
+        sharpenSlider.addOnChangeListener { _, value, fromUser ->
+            if (fromUser) { prefs.sharpen = value.toInt(); scheduleQualityApply() }
+            findViewById<TextView>(R.id.sharpenValue).text = if (value > 0) "선명 ${value.toInt()}" else "선명 끔"
+        }
+        denoiseSlider.addOnChangeListener { _, value, fromUser ->
+            if (fromUser) { prefs.denoise = value.toInt(); scheduleQualityApply() }
+            findViewById<TextView>(R.id.denoiseValue).text = if (value > 0) "노이즈 ${value.toInt()}" else "노이즈 끔"
+        }
+        upscaleSwitch.setOnCheckedChangeListener { _, checked ->
+            if (checked == prefs.upscale) return@setOnCheckedChangeListener
+            prefs.upscale = checked
+            scheduleQualityApply()
+        }
         findViewById<View>(R.id.colorReset).setOnClickListener {
             prefs.contrast = 0
             prefs.saturation = 0
+            prefs.sharpen = 0
+            prefs.denoise = 0
+            prefs.upscale = false
             applyVideoColor()
+            applyQuality()
             syncAdjustPanel()
-            showIndicator("대비 · 채도 원래대로", R.drawable.ic_contrast)
+            showIndicator("색 · 화질 원래대로", R.drawable.ic_contrast)
         }
         findViewById<View>(R.id.brightnessAuto).setOnClickListener {
             applyBrightness(null)
@@ -1330,6 +1374,62 @@ class PlayerActivity : AppCompatActivity() {
         volumeSlider.value = volumePercent().coerceIn(0, 200).toFloat()
         contrastSlider.value = prefs.contrast.coerceIn(-100, 100).toFloat()
         saturationSlider.value = prefs.saturation.coerceIn(-100, 100).toFloat()
+        sharpenSlider.value = prefs.sharpen.coerceIn(0, 100).toFloat()
+        denoiseSlider.value = prefs.denoise.coerceIn(0, 100).toFloat()
+        upscaleSwitch.isChecked = prefs.upscale
+    }
+
+    // ---------------------------------------------------------------- 화질 개선 (GPU, 실시간)
+
+    private fun currentQuality() = QualitySettings(prefs.sharpen, prefs.denoise, prefs.upscale)
+
+    /** 업스케일 목표 크기 = 영상이 그려지는 화면 크기. */
+    private fun displayBox(): Pair<Int, Int> {
+        val v = playerView.videoSurfaceView
+        val w = v?.width?.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        val h = v?.height?.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
+        return minOf(w, 2560) to minOf(h, 2560)
+    }
+
+    private fun qualityEffects(): List<Effect> {
+        val (w, h) = displayBox()
+        return QualityEffects.build(currentQuality(), w, h)
+    }
+
+    private fun qualityKey(): String {
+        val q = currentQuality()
+        val box = if (q.upscale) displayBox().toString() else ""
+        return "$q$box"
+    }
+
+    private fun scheduleQualityApply() {
+        handler.removeCallbacks(applyQualityTask)
+        handler.postDelayed(applyQualityTask, 220)
+    }
+
+    /** 바뀐 화질 설정을 재생 화면에 반영한다. 처음 켤 때만 지금 위치에서 다시 준비한다(잠깐 끊김). */
+    private fun applyQuality() {
+        if (!::player.isInitialized) return
+        val key = qualityKey()
+        if (key == appliedQualityKey) return
+        appliedQualityKey = key
+        val effects = qualityEffects()
+        if (!qualityPipeline) {
+            if (currentQuality().isOff) return
+            qualityPipeline = true
+            player.setVideoEffects(effects)
+            if (player.mediaItemCount > 0 && player.playbackState != Player.STATE_IDLE) {
+                val index = player.currentMediaItemIndex
+                val pos = player.currentPosition
+                player.stop()
+                player.prepare()
+                player.seekTo(index, pos)
+            }
+        } else {
+            player.setVideoEffects(effects)
+        }
+        val q = currentQuality()
+        showIndicator("화질: " + q.label(), R.drawable.ic_ai)
     }
 
     private fun toggleAdjustPanel() {
@@ -1818,7 +1918,10 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     /** 저장 대화상자에서 고른 값. */
-    private class SaveChoice(val name: String, val folder: Uri?, val range: Pair<Long, Long>?, val removeAudio: Boolean, val caption: String)
+    private class SaveChoice(
+        val name: String, val folder: Uri?, val range: Pair<Long, Long>?, val removeAudio: Boolean, val caption: String,
+        val applyQuality: Boolean = false, val aiColorize: Boolean = false, val aiUpscale: Boolean = false
+    )
 
     /**
      * 파일 이름 + 저장 위치(+ 구간, 소리 빼기, 썸네일 글자) 입력창. 위치를 바꾸면 설정에도 저장된다.
@@ -1827,10 +1930,12 @@ class PlayerActivity : AppCompatActivity() {
     private fun showSaveDialog(
         title: String, icon: Int, defaultName: String, image: Boolean,
         range: Pair<Long, Long>? = null, audioOption: Boolean = range != null, caption: Boolean = false,
-        message: String? = null, onSave: (SaveChoice) -> Unit
+        message: String? = null, aiImage: Boolean = false, videoFx: Boolean = false, onSave: (SaveChoice) -> Unit
     ) {
+        val quality = currentQuality()
         if (!prefs.askOnCapture && !caption) {
-            onSave(SaveChoice(defaultName, if (image) prefs.imageFolder else prefs.videoFolder, range, false, ""))
+            onSave(SaveChoice(defaultName, if (image) prefs.imageFolder else prefs.videoFolder, range, false, "",
+                applyQuality = videoFx && !quality.isOff))
             return
         }
         val v = LayoutInflater.from(this).inflate(R.layout.dialog_save, null)
@@ -1840,6 +1945,37 @@ class PlayerActivity : AppCompatActivity() {
         val start = v.findViewById<EditText>(R.id.start)
         val end = v.findViewById<EditText>(R.id.end)
         val captionEdit = v.findViewById<EditText>(R.id.caption)
+        val applyQuality = v.findViewById<MaterialSwitch>(R.id.applyQuality)
+        val aiColorize = v.findViewById<MaterialSwitch>(R.id.aiColorize)
+        val aiUpscale = v.findViewById<MaterialSwitch>(R.id.aiUpscale)
+        val aiNote = v.findViewById<TextView>(R.id.aiNote)
+        if (videoFx) {
+            if (!quality.isOff) {
+                applyQuality.visibility = View.VISIBLE
+                applyQuality.text = "화질 개선 적용 (" + quality.label() + ")"
+                applyQuality.isChecked = true
+            }
+            aiColorize.visibility = View.VISIBLE
+            aiColorize.text = "AI 컬러화 (흑백 → 컬러, 오래 걸림)"
+        }
+        if (aiImage) {
+            aiColorize.visibility = View.VISIBLE
+            aiUpscale.visibility = View.VISIBLE
+        }
+        fun updateAiNote() {
+            val notes = mutableListOf<String>()
+            if (aiColorize.isChecked) notes += if (videoFx) "AI 컬러화는 기기 안에서 프레임마다 처리해 1분 영상에 수 분 걸릴 수 있어요." else "AI 가 밝기를 보고 색을 추정합니다. 실제 색과 다를 수 있어요."
+            if (aiUpscale.isChecked) notes += "AI 업스케일은 원본 해상도 기준 4배로 키웁니다 (수십 초 걸릴 수 있어요)."
+            val missing = listOfNotNull(
+                ModelStore.Model.COLORIZE.takeIf { aiColorize.isChecked && !ModelStore.isReady(this, it) },
+                ModelStore.Model.UPSCALE.takeIf { aiUpscale.isChecked && !ModelStore.isReady(this, it) }
+            )
+            if (missing.isNotEmpty()) notes += "처음 한 번 AI 모델(" + missing.joinToString(", ") { "${it.title} ${it.sizeMb}MB" } + ")을 내려받습니다."
+            aiNote.text = notes.joinToString("\n")
+            aiNote.visibility = if (notes.isEmpty()) View.GONE else View.VISIBLE
+        }
+        aiColorize.setOnCheckedChangeListener { _, _ -> updateAiNote() }
+        aiUpscale.setOnCheckedChangeListener { _, _ -> updateAiNote() }
         var folder: Uri? = if (image) prefs.imageFolder else prefs.videoFolder
         val defaultLabel = if (image) MediaStoreSaver.DEFAULT_IMAGE_LABEL else MediaStoreSaver.DEFAULT_VIDEO_LABEL
         name.setText(defaultName)
@@ -1878,7 +2014,12 @@ class PlayerActivity : AppCompatActivity() {
                     r = s to e
                 }
                 dialog.dismiss()
-                onSave(SaveChoice(name.text.toString().ifBlank { defaultName }, folder, r, removeAudio.isChecked, captionEdit.text.toString()))
+                onSave(SaveChoice(
+                    name.text.toString().ifBlank { defaultName }, folder, r, removeAudio.isChecked, captionEdit.text.toString(),
+                    applyQuality = applyQuality.visibility == View.VISIBLE && applyQuality.isChecked,
+                    aiColorize = aiColorize.visibility == View.VISIBLE && aiColorize.isChecked,
+                    aiUpscale = aiUpscale.visibility == View.VISIBLE && aiUpscale.isChecked
+                ))
             }
             .show()
     }
@@ -1893,9 +2034,103 @@ class PlayerActivity : AppCompatActivity() {
         val bitmap = currentFrame() ?: run { showIndicator("캡쳐할 화면이 없습니다", R.drawable.ic_camera); return }
         val wasPlaying = player.isPlaying
         if (prefs.askOnCapture) player.pause()
-        showSaveDialog("화면 캡쳐", R.drawable.ic_camera, baseName("capture"), image = true) { c ->
-            saveBitmap(bitmap, c.name, c.folder, "캡쳐 저장")
-            if (wasPlaying) player.play()
+        showSaveDialog("화면 캡쳐", R.drawable.ic_camera, baseName("capture"), image = true, aiImage = true) { c ->
+            if (c.aiColorize || c.aiUpscale) {
+                // AI 업스케일은 화면 크기가 아닌 동영상 원래 해상도의 장면으로 처리한다.
+                val src = if (c.aiUpscale) nativeFrame() ?: bitmap else bitmap
+                processCaptureWithAi(src, c) { out -> saveBitmap(out, c.name, c.folder, "AI 캡쳐 저장") }
+            } else {
+                saveBitmap(bitmap, c.name, c.folder, "캡쳐 저장")
+            }
+            if (wasPlaying && !(c.aiColorize || c.aiUpscale)) player.play()
+        }
+    }
+
+    /** 동영상 원래 해상도의 지금 장면 (화질 개선을 켜 두었으면 화면 크기). */
+    private fun nativeFrame(): Bitmap? {
+        val texture = playerView.videoSurfaceView as? TextureView ?: return null
+        val vs = player.videoSize
+        if (vs.width <= 0 || vs.height <= 0) return null
+        var w = (vs.width * vs.pixelWidthHeightRatio).toInt()
+        var h = vs.height
+        if (vs.unappliedRotationDegrees == 90 || vs.unappliedRotationDegrees == 270) { val t = w; w = h; h = t }
+        return runCatching { texture.getBitmap(w, h) }.getOrNull()
+    }
+
+    // ---------------------------------------------------------------- AI 컬러화 / 업스케일
+
+    /** 모델이 없으면 내려받을지 묻고 내려받은 뒤 then 을 부른다. */
+    private fun ensureModels(models: List<ModelStore.Model>, then: () -> Unit) {
+        val missing = models.filter { !ModelStore.isReady(this, it) }
+        if (missing.isEmpty()) { then(); return }
+        val total = missing.sumOf { it.sizeMb }
+        AppDialog(this)
+            .icon(R.drawable.ic_ai)
+            .title("AI 모델 내려받기")
+            .message(
+                missing.joinToString("\n") { "• ${it.title} 모델 (약 ${it.sizeMb}MB)" } +
+                    "\n\n처음 한 번만 내려받고(합계 약 ${total}MB), 그다음부터는 인터넷 없이 기기 안에서 처리합니다. 와이파이 연결을 권장해요."
+            )
+            .secondary("취소")
+            .primary("내려받기") {
+                var cancelled = false
+                val p = AppDialog.progress(this, "AI 모델 내려받는 중", null) { cancelled = true }
+                lifecycleScope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        runCatching {
+                            missing.forEachIndexed { i, m ->
+                                runOnUiThread { p.dialog.message("${m.title} (${i + 1}/${missing.size})") }
+                                ModelStore.download(this@PlayerActivity, m, { pct -> runOnUiThread { p.set(pct) } }) { cancelled }
+                            }
+                        }
+                    }
+                    p.dialog.dismiss()
+                    if (cancelled) return@launch
+                    result.onSuccess { then() }
+                        .onFailure { AppDialog.info(this@PlayerActivity, "모델을 내려받지 못했습니다", (it.message ?: "") + "\n\n인터넷 연결을 확인하고 다시 시도해 주세요.", R.drawable.ic_error) }
+                }
+            }
+            .show()
+    }
+
+    /** 캡쳐한 장면에 AI 컬러화 → AI 업스케일을 차례로 적용한다. */
+    private fun processCaptureWithAi(src: Bitmap, c: SaveChoice, done: (Bitmap) -> Unit) {
+        val models = listOfNotNull(
+            ModelStore.Model.COLORIZE.takeIf { c.aiColorize },
+            ModelStore.Model.UPSCALE.takeIf { c.aiUpscale }
+        )
+        ensureModels(models) {
+            var cancelled = false
+            val p = AppDialog.progress(this, "AI 처리 중", "기기 안에서 처리합니다…") { cancelled = true }
+            lifecycleScope.launch {
+                val result = withContext(Dispatchers.Default) {
+                    runCatching {
+                        var img = src
+                        if (c.aiColorize) {
+                            runOnUiThread { p.dialog.message("흑백 → 컬러 변환 중…"); p.set(10) }
+                            Colorizer(ModelStore.file(this@PlayerActivity, ModelStore.Model.COLORIZE)).use { img = it.colorize(img) }
+                            runOnUiThread { p.set(100) }
+                        }
+                        if (c.aiUpscale && !cancelled) {
+                            val longest = maxOf(img.width, img.height)
+                            if (longest > Upscaler.MAX_INPUT) {
+                                val s = Upscaler.MAX_INPUT / longest.toFloat()
+                                img = Bitmap.createScaledBitmap(img, (img.width * s).toInt(), (img.height * s).toInt(), true)
+                            }
+                            runOnUiThread { p.dialog.message("AI 업스케일 중 (${img.width}×${img.height} → ${img.width * 4}×${img.height * 4})…"); p.set(0) }
+                            Upscaler(ModelStore.file(this@PlayerActivity, ModelStore.Model.UPSCALE)).use { u ->
+                                u.upscale(img, { pct -> runOnUiThread { p.set(pct) } }) { cancelled }?.let { img = it }
+                            }
+                        }
+                        img
+                    }
+                }
+                p.dialog.dismiss()
+                if (cancelled) return@launch
+                result.onSuccess(done).onFailure {
+                    AppDialog.info(this@PlayerActivity, "AI 처리를 하지 못했습니다", it.message ?: it.javaClass.simpleName, R.drawable.ic_error)
+                }
+            }
         }
     }
 
@@ -2087,12 +2322,13 @@ class PlayerActivity : AppCompatActivity() {
             showSaveDialog(
                 "구간 저장", R.drawable.ic_cut, baseName("clip"), image = false, range = single, audioOption = true,
                 message = if (ranges.size > 1) (if (separate) "구간 ${ranges.size}개를 각각 파일로 저장합니다 (이름 뒤에 _1, _2 …)." else "구간 ${ranges.size}개를 순서대로 이어 한 파일로 저장합니다.")
-                else "재생 속도와 상관없이 원래 속도로 저장됩니다."
+                else "재생 속도와 상관없이 원래 속도로 저장됩니다.",
+                videoFx = true
             ) { c ->
                 val rs = c.range?.let { listOf(it) } ?: ranges
                 val jobs = if (separate && rs.size > 1) rs.mapIndexed { i, r -> ExportJob("${c.name}_${i + 1}", listOf(r)) }
                 else listOf(ExportJob(c.name, rs))
-                runExports("구간 저장 중", jobs, c.removeAudio, c.folder)
+                runExports("구간 저장 중", jobs, c.removeAudio, c.folder, c)
             }
         }
         if (ranges.size == 1) go(false)
@@ -2123,16 +2359,44 @@ class PlayerActivity : AppCompatActivity() {
         val removed = ranges.sumOf { it.second - it.first }
         showSaveDialog(
             "구간 삭제", R.drawable.ic_delete, baseName("cut"), image = false, audioOption = true,
-            message = "고른 구간 ${ranges.size}개(합계 ${Util.formatTime(removed)})를 뺀 나머지를 새 동영상으로 저장합니다. 원본 파일은 그대로 둡니다."
-        ) { c -> runExports("구간 삭제 중", listOf(ExportJob(c.name, keep)), c.removeAudio, c.folder) }
+            message = "고른 구간 ${ranges.size}개(합계 ${Util.formatTime(removed)})를 뺀 나머지를 새 동영상으로 저장합니다. 원본 파일은 그대로 둡니다.",
+            videoFx = true
+        ) { c -> runExports("구간 삭제 중", listOf(ExportJob(c.name, keep)), c.removeAudio, c.folder, c) }
     }
 
     /** 내보내기를 차례로 실행. 끝나면 별도 창 없이 안내만 잠깐 보여준다. */
-    private fun runExports(title: String, jobs: List<ExportJob>, removeAudio: Boolean, folder: Uri?) {
+    private fun runExports(title: String, jobs: List<ExportJob>, removeAudio: Boolean, folder: Uri?, choice: SaveChoice? = null) {
+        if (choice?.aiColorize == true) {
+            ensureModels(listOf(ModelStore.Model.COLORIZE)) { startExports(title, jobs, removeAudio, folder, choice) }
+        } else {
+            startExports(title, jobs, removeAudio, folder, choice)
+        }
+    }
+
+    private fun startExports(title: String, jobs: List<ExportJob>, removeAudio: Boolean, folder: Uri?, choice: SaveChoice?) {
         val uri = currentUri() ?: return
         val duration = player.duration
         val label = prefs.folderLabel(folder, MediaStoreSaver.DEFAULT_VIDEO_LABEL)
-        val p = AppDialog.progress(this, title, "저장 위치: $label") { exporter.cancel() }
+        var colorizer: Colorizer? = null
+        val effects = mutableListOf<Effect>()
+        try {
+            if (choice?.aiColorize == true) {
+                val c = Colorizer(ModelStore.file(this, ModelStore.Model.COLORIZE))
+                colorizer = c
+                effects += ColorizeEffect(c)
+            }
+        } catch (e: Exception) {
+            AppDialog.info(this, "AI 컬러화를 준비하지 못했습니다", e.message ?: e.javaClass.simpleName, R.drawable.ic_error)
+            return
+        }
+        // 저장할 때 업스케일은 1080p(세로 영상은 1080×1920) 안쪽으로 키운다.
+        if (choice?.applyQuality == true) effects += QualityEffects.build(currentQuality(), 1920, 1920)
+        val closeAi = { colorizer?.close(); colorizer = null }
+        val p = AppDialog.progress(this, title, "저장 위치: $label" + if (effects.isNotEmpty()) "\n화질 개선·AI 처리로 다시 인코딩합니다." else "") {
+            exporter.cancel()
+            // 처리 중인 프레임이 끝난 뒤에 AI 모델을 닫는다.
+            handler.postDelayed({ closeAi() }, 3000)
+        }
         val notes = mutableSetOf<String>()
 
         fun run(i: Int) {
@@ -2140,7 +2404,7 @@ class PlayerActivity : AppCompatActivity() {
             if (jobs.size > 1) p.dialog.title("$title (${i + 1}/${jobs.size})")
             p.set(0)
             val ranges = job.ranges.map { (s, e) -> s to e.coerceAtMost(duration) }
-            exporter.exportRanges(uri, ranges, removeAudio, job.name, folder, object : VideoExporter.Callback {
+            exporter.exportRanges(uri, ranges, removeAudio, job.name, folder, videoEffects = effects, cb = object : VideoExporter.Callback {
                 override fun onProgress(percent: Int) = p.set(percent)
 
                 override fun onStatus(message: String) {
@@ -2155,6 +2419,7 @@ class PlayerActivity : AppCompatActivity() {
                         return
                     }
                     p.dialog.dismiss()
+                    closeAi()
                     val count = if (jobs.size > 1) "${jobs.size}개 " else ""
                     showIndicator("${count}저장했습니다  ·  $label", R.drawable.ic_check, duration = 2500)
                     if (notes.isNotEmpty()) Util.toast(this@PlayerActivity, notes.joinToString(" "))
@@ -2162,6 +2427,7 @@ class PlayerActivity : AppCompatActivity() {
 
                 override fun onError(message: String) {
                     p.dialog.dismiss()
+                    closeAi()
                     AppDialog.info(this@PlayerActivity, "저장하지 못했습니다", message, R.drawable.ic_error)
                 }
             })

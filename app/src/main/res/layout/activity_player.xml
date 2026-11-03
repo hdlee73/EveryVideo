@@ -640,6 +640,95 @@
                 android:textSize="13sp" />
         </LinearLayout>
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="화질 개선 (GPU)"
+            android:textColor="#B3FFFFFF"
+            android:textSize="12sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_sharpen"
+                app:tint="@android:color/white" />
+
+            <com.google.android.material.slider.Slider
+                android:id="@+id/sharpenSlider"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:contentDescription="선명하게"
+                android:stepSize="1"
+                android:valueFrom="0"
+                android:valueTo="100"
+                android:value="0"
+                app:labelBehavior="gone" />
+
+            <TextView
+                android:id="@+id/sharpenValue"
+                android:layout_width="64dp"
+                android:layout_height="wrap_content"
+                android:gravity="end"
+                android:textColor="@android:color/white"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_denoise"
+                app:tint="@android:color/white" />
+
+            <com.google.android.material.slider.Slider
+                android:id="@+id/denoiseSlider"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:contentDescription="노이즈 줄이기"
+                android:stepSize="1"
+                android:valueFrom="0"
+                android:valueTo="100"
+                android:value="0"
+                app:labelBehavior="gone" />
+
+            <TextView
+                android:id="@+id/denoiseValue"
+                android:layout_width="64dp"
+                android:layout_height="wrap_content"
+                android:gravity="end"
+                android:textColor="@android:color/white"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/upscaleSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:drawableStart="@drawable/ic_hd"
+            android:drawablePadding="12dp"
+            android:drawableTint="@android:color/white"
+            android:text="업스케일 (화면 해상도로 고화질 확대)"
+            android:textColor="@android:color/white"
+            android:textSize="13sp" />
+
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -688,7 +777,7 @@
                 android:gravity="center"
                 android:paddingStart="12dp"
                 android:paddingEnd="12dp"
-                android:text="색 원래대로"
+                android:text="색·화질 원래대로"
                 android:textColor="@color/player_accent"
                 android:textSize="13sp" />
 

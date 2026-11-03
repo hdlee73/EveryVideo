@@ -10,6 +10,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.Clock
@@ -160,18 +161,22 @@ class VideoExporter(private val context: Context) {
      * 한 동영상에서 [startMs, endMs] 구간만 새 동영상으로 저장한다.
      * 1) 그대로 옮겨 담기(시작은 가장 가까운 앞쪽 키프레임) → 2) H.264 로 다시 인코딩 → 3) 소리 빼고 다시 인코딩 순으로 시도한다.
      */
-    fun exportClip(uri: Uri, startMs: Long, endMs: Long, removeAudio: Boolean, baseName: String, folder: Uri?, cb: Callback) {
-        val attempts = mutableListOf(
-            Attempt(null, null) {
-                copyBuilder() to EditedMediaItem.Builder(clipItem(uri, startMs, endMs, true)).setRemoveAudio(removeAudio).build()
-            },
-            Attempt("다른 방식(다시 인코딩)으로 저장하는 중…", null) {
-                encodeBuilder() to EditedMediaItem.Builder(clipItem(uri, startMs, endMs, false)).setRemoveAudio(removeAudio).build()
-            }
-        )
+    fun exportClip(
+        uri: Uri, startMs: Long, endMs: Long, removeAudio: Boolean, baseName: String, folder: Uri?, cb: Callback,
+        videoEffects: List<Effect> = emptyList()
+    ) {
+        val fx = Effects(emptyList(), videoEffects)
+        fun item(keyFrame: Boolean, noAudio: Boolean) =
+            EditedMediaItem.Builder(clipItem(uri, startMs, endMs, keyFrame)).setRemoveAudio(noAudio).setEffects(fx).build()
+        val attempts = mutableListOf<Attempt>()
+        // 화질 개선·컬러화가 있으면 그대로 옮겨 담을 수 없어 처음부터 다시 인코딩한다.
+        if (videoEffects.isEmpty()) attempts += Attempt(null, null) { copyBuilder() to item(true, removeAudio) }
+        attempts += Attempt(if (videoEffects.isEmpty()) "다른 방식(다시 인코딩)으로 저장하는 중…" else null, null) {
+            encodeBuilder() to item(false, removeAudio)
+        }
         if (!removeAudio) {
             attempts += Attempt("소리 형식을 처리하지 못해 소리 없이 저장하는 중…", "이 동영상의 소리 형식은 저장 기능에서 지원하지 않아 소리 없이 저장했습니다.") {
-                encodeBuilder() to EditedMediaItem.Builder(clipItem(uri, startMs, endMs, false)).setRemoveAudio(true).build()
+                encodeBuilder() to item(false, true)
             }
         }
         run(attempts, baseName, folder, cb)
@@ -181,14 +186,18 @@ class VideoExporter(private val context: Context) {
      * 한 동영상의 여러 구간을 순서대로 이어 하나의 동영상으로 저장한다 (구간 여러 개 저장, 구간 삭제 후 남은 부분 저장).
      * 구간이 하나면 [exportClip] 과 같다.
      */
-    fun exportRanges(uri: Uri, ranges: List<Pair<Long, Long>>, removeAudio: Boolean, baseName: String, folder: Uri?, cb: Callback) {
+    fun exportRanges(
+        uri: Uri, ranges: List<Pair<Long, Long>>, removeAudio: Boolean, baseName: String, folder: Uri?, cb: Callback,
+        videoEffects: List<Effect> = emptyList()
+    ) {
         if (ranges.size == 1) {
-            exportClip(uri, ranges[0].first, ranges[0].second, removeAudio, baseName, folder, cb)
+            exportClip(uri, ranges[0].first, ranges[0].second, removeAudio, baseName, folder, cb, videoEffects)
             return
         }
+        val fx = Effects(emptyList(), videoEffects)
         fun composition(noAudio: Boolean) = Composition.Builder(
             EditedMediaItemSequence(ranges.map { (s, e) ->
-                EditedMediaItem.Builder(clipItem(uri, s, e, false)).setRemoveAudio(noAudio).build()
+                EditedMediaItem.Builder(clipItem(uri, s, e, false)).setRemoveAudio(noAudio).setEffects(fx).build()
             })
         ).build()
         val attempts = mutableListOf(Attempt(null, null) { encodeBuilder() to composition(removeAudio) })

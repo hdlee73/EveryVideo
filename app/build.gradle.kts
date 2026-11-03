@@ -22,6 +22,8 @@ android {
         // 앱 정보에 보여줄 빌드(업데이트) 날짜
         val buildDate = LocalDate.now(ZoneId.of("Asia/Seoul")).toString()
         buildConfigField("String", "BUILD_DATE", "\"$buildDate\"")
+        // 64비트 기기만 (갤럭시 S23 등 arm64, CI 에뮬레이터 x86_64). AI 엔진(ONNX Runtime) 용량을 줄인다.
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
 
     signingConfigs {
@@ -101,4 +103,7 @@ dependencies {
     implementation("com.hierynomus:smbj:0.13.0")
     // WebDAV 폴더 목록 (PROPFIND)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // AI 컬러화 / 업스케일 (기기 안에서 실행, 모델은 처음 쓸 때 내려받음)
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
 }
