@@ -48,6 +48,23 @@ fi
 adb shell input keyevent KEYCODE_P
 sleep 3
 adb exec-out screencap -p > "$OUT/tablet-hidden.png"
+# 화질 개선(GPU 효과: 노이즈 줄이기 → 업스케일 → 선명하게)을 켠 채 다시 열어 본다
+adb shell wm size reset
+adb shell wm density reset
+adb shell settings put system user_rotation 0
+adb shell am force-stop $PKG
+if adb root >/dev/null 2>&1; then
+  adb wait-for-device
+  sleep 3
+  f=/data/data/$PKG/shared_prefs/settings.xml
+  uid=$(adb shell stat -c %u /data/data/$PKG | tr -d '\r')
+  adb shell "sed -i 's#</map>#<int name=\"sharpen\" value=\"60\" /><int name=\"denoise\" value=\"40\" /><boolean name=\"upscale\" value=\"true\" /></map>#' $f && chown $uid:$uid $f && cat $f"
+  adb shell am start -W -a android.intent.action.VIEW -t video/mp4 -d "file://$DIR/test.mp4" -n "$PKG/.ui.PlayerActivity"
+  sleep 12
+  adb exec-out screencap -p > "$OUT/quality.png"
+else
+  echo "adb root not available; skipping quality check"
+fi
 adb logcat -d > "$OUT/logcat.txt"
 crashed=0
 if grep -q "FATAL EXCEPTION" "$OUT/logcat.txt"; then
@@ -55,7 +72,7 @@ if grep -q "FATAL EXCEPTION" "$OUT/logcat.txt"; then
 fi
 if [ -z "$(adb shell pidof $PKG)" ]; then echo "::error::app is not running"; crashed=1; fi
 # 화면 확인용: 작은 JPEG 를 로그에 남긴다 (SHOT-<이름>: 줄을 이어 붙여 base64 디코딩)
-for n in portrait landscape tablet-side tablet-drag tablet-hidden; do
+for n in portrait landscape tablet-side tablet-drag tablet-hidden quality; do
   [ -f "$OUT/$n.png" ] || continue
   ffmpeg -hide_banner -loglevel error -y -i "$OUT/$n.png" -vf "scale='if(gt(iw,ih),900,420)':-2" -q:v 6 "$OUT/$n.jpg"
   base64 -w 4000 "$OUT/$n.jpg" | sed "s/^/SHOT-$n:/"
