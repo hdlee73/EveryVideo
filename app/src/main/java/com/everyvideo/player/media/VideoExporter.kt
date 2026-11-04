@@ -76,6 +76,12 @@ class VideoExporter(private val context: Context) {
         .setVideoMimeType(MimeTypes.VIDEO_H264)
         .setAudioMimeType(MimeTypes.AUDIO_AAC)
 
+    /**
+     * 영상만 다시 인코딩(H.264)하고 소리는 원본 그대로 옮겨 담는 방식.
+     * 화질 개선·AI 컬러화처럼 영상만 바꿀 때 쓴다. 소리를 디코딩하지 않아 AC3·EAC3·DTS 등 기기가 못 푸는 소리도 살린다.
+     */
+    private fun videoOnlyBuilder(): Transformer.Builder = copyBuilder().setVideoMimeType(MimeTypes.VIDEO_H264)
+
     private fun run(attempts: List<Attempt>, baseName: String, folder: Uri?, cb: Callback) {
         cancelled = false
         resultNote = null
@@ -171,7 +177,9 @@ class VideoExporter(private val context: Context) {
         val attempts = mutableListOf<Attempt>()
         // 화질 개선·컬러화가 있으면 그대로 옮겨 담을 수 없어 처음부터 다시 인코딩한다.
         if (videoEffects.isEmpty()) attempts += Attempt(null, null) { copyBuilder() to item(true, removeAudio) }
-        attempts += Attempt(if (videoEffects.isEmpty()) "다른 방식(다시 인코딩)으로 저장하는 중…" else null, null) {
+        // 영상 효과가 있으면 소리는 원본 그대로(디코딩 없이) 먼저 시도하고, 안 되면 AAC 로 다시 인코딩한다.
+        if (videoEffects.isNotEmpty()) attempts += Attempt(null, null) { videoOnlyBuilder() to item(false, removeAudio) }
+        attempts += Attempt(if (videoEffects.isEmpty()) "다른 방식(다시 인코딩)으로 저장하는 중…" else "소리를 다른 방식으로 저장하는 중…", null) {
             encodeBuilder() to item(false, removeAudio)
         }
         if (!removeAudio) {
@@ -200,7 +208,9 @@ class VideoExporter(private val context: Context) {
                 EditedMediaItem.Builder(clipItem(uri, s, e, false)).setRemoveAudio(noAudio).setEffects(fx).build()
             })
         ).build()
-        val attempts = mutableListOf(Attempt(null, null) { encodeBuilder() to composition(removeAudio) })
+        val attempts = mutableListOf<Attempt>()
+        if (videoEffects.isNotEmpty()) attempts += Attempt(null, null) { videoOnlyBuilder() to composition(removeAudio) }
+        attempts += Attempt(if (videoEffects.isNotEmpty()) "소리를 다른 방식으로 저장하는 중…" else null, null) { encodeBuilder() to composition(removeAudio) }
         if (!removeAudio) {
             attempts += Attempt("소리 형식을 처리하지 못해 소리 없이 저장하는 중…", "이 동영상의 소리 형식은 저장 기능에서 지원하지 않아 소리 없이 저장했습니다.") {
                 encodeBuilder() to composition(true)
