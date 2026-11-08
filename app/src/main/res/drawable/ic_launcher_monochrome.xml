@@ -1,0 +1,11 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- 테마 아이콘(Android 13+)용 단색 -->
+    <path android:fillColor="#FFFFFFFF" android:fillAlpha="0.4"
+        android:pathData="M38.76,43.65Q38.76,40.80 41.34,42.23L57.65,52.45Q59.97,54.00 57.65,55.55L41.34,65.77Q38.76,67.20 38.76,64.35Z" />
+    <path android:fillColor="#FFFFFFFF" android:fillAlpha="0.7"
+        android:pathData="M43.82,43.65Q43.82,40.80 46.41,42.23L62.71,52.45Q65.04,54.00 62.71,55.55L46.41,65.77Q43.82,67.20 43.82,64.35Z" />
+    <path android:fillColor="#FFFFFFFF" android:fillAlpha="1"
+        android:pathData="M49.16,43.65Q49.16,40.80 51.75,42.23L68.05,52.45Q70.38,54.00 68.05,55.55L51.75,65.77Q49.16,67.20 49.16,64.35Z" />
+</vector>
