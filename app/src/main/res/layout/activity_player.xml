@@ -865,6 +865,7 @@
                         style="@style/WorkTool"
                         android:layout_marginEnd="4dp"
                         android:drawableStart="@drawable/ic_mark_in"
+                        android:drawableTint="@color/accent"
                         android:text="구간 시작" />
 
                     <TextView
@@ -872,6 +873,7 @@
                         style="@style/WorkTool"
                         android:layout_marginStart="4dp"
                         android:drawableStart="@drawable/ic_mark_out"
+                        android:drawableTint="@color/accent"
                         android:text="구간 끝" />
                 </LinearLayout>
 
@@ -883,38 +885,73 @@
 
                     <TextView
                         android:id="@+id/workCapture"
-                        style="@style/WorkTool"
-                        android:layout_marginEnd="4dp"
-                        android:drawableStart="@drawable/ic_camera"
-                        android:text="화면 캡쳐" />
+                        android:layout_width="0dp"
+                        android:layout_height="56dp"
+                        android:layout_marginEnd="3dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_tool_button"
+                        android:drawableTop="@drawable/ic_camera"
+                        android:drawablePadding="4dp"
+                        android:drawableTint="@color/text_primary"
+                        android:gravity="center"
+                        android:paddingTop="8dp"
+                        android:paddingBottom="6dp"
+                        android:text="캡쳐"
+                        android:textColor="@color/text_primary"
+                        android:textSize="11.5sp" />
 
                     <TextView
                         android:id="@+id/workGif"
-                        style="@style/WorkTool"
-                        android:layout_marginStart="4dp"
-                        android:drawableStart="@drawable/ic_gif"
-                        android:text="GIF" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:orientation="horizontal">
+                        android:layout_width="0dp"
+                        android:layout_height="56dp"
+                        android:layout_marginStart="3dp"
+                        android:layout_marginEnd="3dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_tool_button"
+                        android:drawableTop="@drawable/ic_gif"
+                        android:drawablePadding="4dp"
+                        android:drawableTint="@color/text_primary"
+                        android:gravity="center"
+                        android:paddingTop="8dp"
+                        android:paddingBottom="6dp"
+                        android:text="GIF"
+                        android:textColor="@color/text_primary"
+                        android:textSize="11.5sp" />
 
                     <TextView
                         android:id="@+id/workThumb"
-                        style="@style/WorkTool"
-                        android:layout_marginEnd="4dp"
-                        android:drawableStart="@drawable/ic_grid"
-                        android:text="장면 모음" />
+                        android:layout_width="0dp"
+                        android:layout_height="56dp"
+                        android:layout_marginStart="3dp"
+                        android:layout_marginEnd="3dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_tool_button"
+                        android:drawableTop="@drawable/ic_grid"
+                        android:drawablePadding="4dp"
+                        android:drawableTint="@color/text_primary"
+                        android:gravity="center"
+                        android:paddingTop="8dp"
+                        android:paddingBottom="6dp"
+                        android:text="장면모음"
+                        android:textColor="@color/text_primary"
+                        android:textSize="11.5sp" />
 
                     <TextView
                         android:id="@+id/workDelete"
-                        style="@style/WorkTool"
-                        android:layout_marginStart="4dp"
-                        android:drawableStart="@drawable/ic_delete"
-                        android:text="구간 지우기" />
+                        android:layout_width="0dp"
+                        android:layout_height="56dp"
+                        android:layout_marginStart="3dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_tool_button"
+                        android:drawableTop="@drawable/ic_delete"
+                        android:drawablePadding="4dp"
+                        android:drawableTint="@color/danger"
+                        android:gravity="center"
+                        android:paddingTop="8dp"
+                        android:paddingBottom="6dp"
+                        android:text="구간삭제"
+                        android:textColor="@color/text_primary"
+                        android:textSize="11.5sp" />
                 </LinearLayout>
 
                 <TextView

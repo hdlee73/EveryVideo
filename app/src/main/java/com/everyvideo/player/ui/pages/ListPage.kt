@@ -51,6 +51,7 @@ abstract class ListPage : Fragment(R.layout.fragment_list), Searchable {
     private lateinit var actions: LinearLayout
     private lateinit var emptyView: View
     private lateinit var progress: LinearProgressIndicator
+    private lateinit var topSlot: android.widget.FrameLayout
     protected lateinit var upButton: ImageButton
     private val adapter = RowAdapter()
     private var allRows: List<Row> = emptyList()
@@ -65,6 +66,7 @@ abstract class ListPage : Fragment(R.layout.fragment_list), Searchable {
         actions = view.findViewById(R.id.actions)
         emptyView = view.findViewById(R.id.emptyView)
         progress = view.findViewById(R.id.progress)
+        topSlot = view.findViewById(R.id.topSlot)
         upButton = view.findViewById(R.id.btnUp)
         listView.layoutManager = LinearLayoutManager(requireContext())
         listView.adapter = adapter
@@ -100,6 +102,16 @@ abstract class ListPage : Fragment(R.layout.fragment_list), Searchable {
         val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         lp.marginStart = (8 * resources.displayMetrics.density).toInt()
         actions.addView(b, lp)
+    }
+
+    protected fun setTopView(v: View?) {
+        topSlot.removeAllViews()
+        if (v != null) {
+            topSlot.addView(v)
+            topSlot.visibility = View.VISIBLE
+        } else {
+            topSlot.visibility = View.GONE
+        }
     }
 
     protected fun setLoading(loading: Boolean) {

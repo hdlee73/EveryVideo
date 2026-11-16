@@ -24,15 +24,17 @@
     <style name="Theme.EveryVideo" parent="Base.EveryVideo" />
 
     <style name="Theme.EveryVideo.Player" parent="Theme.Material3.Dark.NoActionBar">
-        <item name="colorPrimary">#FF8AB8FF</item>
-        <item name="colorOnPrimary">#FF0A2A5E</item>
-        <item name="colorPrimaryContainer">#FF1D3A6B</item>
-        <item name="colorOnPrimaryContainer">#FFDCE8FF</item>
-        <item name="colorSecondaryContainer">#FF1D3A6B</item>
-        <item name="colorOnSecondaryContainer">#FFDCE8FF</item>
-        <item name="colorSurface">#FF1A1C21</item>
-        <item name="colorOnSurface">#FFECEEF2</item>
-        <item name="colorOnSurfaceVariant">#FF9BA3B0</item>
+        <item name="colorPrimary">#FFADC6FF</item>
+        <item name="colorOnPrimary">#FF002E6A</item>
+        <item name="colorPrimaryContainer">#FF4D8EFF</item>
+        <item name="colorOnPrimaryContainer">#FF00285D</item>
+        <item name="colorSecondary">#FFFFB95F</item>
+        <item name="colorOnSecondary">#FF472A00</item>
+        <item name="colorSecondaryContainer">#FFEE9800</item>
+        <item name="colorOnSecondaryContainer">#FF5B3800</item>
+        <item name="colorSurface">#FF1E1F25</item>
+        <item name="colorOnSurface">#FFE2E2E9</item>
+        <item name="colorOnSurfaceVariant">#FFC2C6D6</item>
         <item name="android:windowBackground">@android:color/black</item>
         <item name="android:statusBarColor">@android:color/black</item>
         <item name="android:navigationBarColor">@android:color/black</item>

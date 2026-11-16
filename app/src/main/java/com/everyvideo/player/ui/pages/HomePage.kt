@@ -18,15 +18,32 @@ class HomePage : ListPage() {
 
     override fun setup() {
         val showRecent = Prefs(requireContext()).showRecentOnHome
-        if (showRecent) setTitle("최근 재생", "보던 곳부터 이어서 봅니다. 길게 누르면 처음부터 보거나 기록에서 지울 수 있어요")
+        if (showRecent) setTitle("이어서 재생", "보던 곳부터 이어서 봅니다. 더보기에서 처음부터 보거나 지울 수 있어요")
         else setTitle("동영상 열기")
-        addAction(R.drawable.ic_link, "주소") { main.showUrlDialog() }
+
+        val hub = layoutInflater.inflate(R.layout.view_home_hub, null, false)
+        hub.findViewById<android.view.View>(R.id.hubRecord).setOnClickListener { main.toggleRecord() }
+        hub.findViewById<android.view.View>(R.id.hubConcat).setOnClickListener {
+            main.show(com.everyvideo.player.ui.MainActivity.Page.CONCAT)
+        }
+        hub.findViewById<android.view.View>(R.id.hubLocal).setOnClickListener {
+            main.pickVideos(VideoPicker.Source.MY_FILES) { main.play(it) }
+        }
+        hub.findViewById<android.view.View>(R.id.hubDrive).setOnClickListener {
+            main.pickVideos(VideoPicker.Source.DRIVE) { main.play(it) }
+        }
+        hub.findViewById<android.view.View>(R.id.hubUrl).setOnClickListener { main.showUrlDialog() }
+        hub.findViewById<android.view.View>(R.id.hubNas).setOnClickListener {
+            main.show(com.everyvideo.player.ui.MainActivity.Page.SERVERS)
+        }
+        setTopView(hub)
+
         addAction(R.drawable.ic_open, "파일 열기", primary = true) {
             main.chooseSourceAndPick("동영상 열기") { main.play(it) }
         }
         setEmpty(
-            R.drawable.ic_movie, "동영상 열기",
-            "휴대폰의 다운로드 폴더나 Google Drive 의 동영상을 고르세요.",
+            R.drawable.ic_movie, "최근 재생한 동영상이 없습니다",
+            "위의 빠른 열기 카드로 기기 동영상, Google Drive, NAS 서버를 열어보세요.",
             "내 파일에서 열기"
         ) { main.pickVideos(VideoPicker.Source.MY_FILES) { main.play(it) } }
         if (!showRecent) {

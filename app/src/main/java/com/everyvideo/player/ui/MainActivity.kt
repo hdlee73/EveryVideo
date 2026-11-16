@@ -58,6 +58,8 @@ class MainActivity : AppCompatActivity() {
 
 
     private var drawer: DrawerLayout? = null
+    private var bottomNav: com.google.android.material.bottomnavigation.BottomNavigationView? = null
+    private var syncingBottomNav = false
     private lateinit var navItems: LinearLayout
     private lateinit var navBottom: LinearLayout
     private val navRows = mutableMapOf<Any, View>()
@@ -104,9 +106,23 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         drawer = findViewById(R.id.drawer)
+        bottomNav = findViewById(R.id.bottomNav)
         navItems = findViewById(R.id.navItems)
         navBottom = findViewById(R.id.navBottom)
         findViewById<View?>(R.id.btnMenu)?.setOnClickListener { drawer?.openDrawer(GravityCompat.START) }
+        findViewById<View?>(R.id.btnSettings)?.setOnClickListener { show(Page.SETTINGS) }
+        bottomNav?.setOnItemSelectedListener { item ->
+            if (syncingBottomNav) return@setOnItemSelectedListener true
+            val page = when (item.itemId) {
+                R.id.nav_home -> Page.HOME
+                R.id.nav_playlists -> Page.PLAYLISTS
+                R.id.nav_bookmarks -> Page.BOOKMARKS
+                R.id.nav_servers -> Page.SERVERS
+                else -> return@setOnItemSelectedListener false
+            }
+            if (current != page) show(page)
+            true
+        }
 
         findViewById<EditText>(R.id.search).addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
@@ -208,7 +224,23 @@ class MainActivity : AppCompatActivity() {
             v.findViewById<View>(R.id.indicator).visibility = if (sel) View.VISIBLE else View.INVISIBLE
         }
         findViewById<TextView?>(R.id.topTitle)?.text = if (page == Page.HOME) getString(R.string.app_name) else page.label
+        bottomNav?.let { bn ->
+            val targetId = when (page) {
+                Page.HOME -> R.id.nav_home
+                Page.PLAYLISTS -> R.id.nav_playlists
+                Page.BOOKMARKS -> R.id.nav_bookmarks
+                Page.SERVERS -> R.id.nav_servers
+                else -> null
+            }
+            if (targetId != null && bn.selectedItemId != targetId) {
+                syncingBottomNav = true
+                bn.selectedItemId = targetId
+                syncingBottomNav = false
+            }
+        }
     }
+
+    fun toggleRecord() = onRecordClicked()
 
     private fun closeDrawer() {
         drawer?.closeDrawer(GravityCompat.START)

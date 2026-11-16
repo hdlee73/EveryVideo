@@ -55,7 +55,11 @@ object WebMedia {
             if (type.startsWith("video/") || type.startsWith("audio/") || type.contains("mpegurl")) {
                 return listOf(linkOf(resp.request.url.toString()))
             }
-            resp.request.url.toString() to (resp.body?.string() ?: "")
+            val body = resp.body ?: return@use resp.request.url.toString() to ""
+            val source = body.source()
+            source.request(2L * 1024 * 1024)
+            val text = source.buffer.clone().readString(Charsets.UTF_8)
+            resp.request.url.toString() to text
         }
         val base = runCatching { URI(finalUrl) }.getOrNull()
         val found = LinkedHashSet<String>()
