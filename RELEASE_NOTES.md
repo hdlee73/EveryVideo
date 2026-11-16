@@ -1,3 +1,12 @@
+## EveryVideo 1.2.0
+
+Cinema Studio UI 리뉴얼 · 새 앱 아이콘 · 보안 강화
+
+- **Cinema Studio 다크 테마 적용**: 세련된 다크 스튜디오 팔레트와 하단 네비게이션·홈 미디어 허브(Fast-Cut 도구 모음, 2×2 빠른 소스 그리드) 추가
+- **세로 재생 작업 모드 개선**: 4열 작업 도구 그리드 적용으로 구간 저장·캡쳐·편집 접근성 강화
+- **새 앱 아이콘**: Neon Ribbon Play 디자인 적용
+- **보안 강화**: `android:allowBackup="false"` 설정 및 웹 미디어 파싱 응답 크기 제한(2 MB)
+
 ## EveryVideo 1.1.1
 
 FTP 한글 이름 깨짐 수정
